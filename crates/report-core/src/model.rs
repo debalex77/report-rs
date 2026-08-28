@@ -338,6 +338,20 @@ pub struct ImageItem {
     pub height: Mm,
 
     pub source: String,
+
+    #[serde(default)]
+    pub fit: ImageFit,
+}
+
+/// Controls how an image is placed inside its declared bounds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ImageFit {
+    /// Fills the complete bounds and may change the image aspect ratio.
+    #[default]
+    Stretch,
+
+    /// Preserves the image aspect ratio and centers it inside the bounds.
+    Contain,
 }
 
 /// Horizontal placement of text within its padded content area.
@@ -566,11 +580,35 @@ mod tests {
                 assert_eq!(image.width, Mm(40.0));
                 assert_eq!(image.height, Mm(30.0));
                 assert_eq!(image.source, "images/logo.png");
+                assert_eq!(image.fit, ImageFit::Stretch);
             }
             _ => panic!("expected an image item"),
         }
 
         let serialized = serde_json::to_string(&item).unwrap();
+        assert!(serialized.contains(r#""fit":"Stretch""#));
         let _: Item = serde_json::from_str(&serialized).unwrap();
+    }
+
+    #[test]
+    fn deserialize_image_item_with_contain_fit() {
+        let json = r#"
+        {
+            "type": "Image",
+            "x": 0.0,
+            "y": 0.0,
+            "width": 100.0,
+            "height": 50.0,
+            "source": "images/logo.png",
+            "fit": "Contain"
+        }
+        "#;
+
+        let item: Item = serde_json::from_str(json).unwrap();
+
+        match item {
+            Item::Image(image) => assert_eq!(image.fit, ImageFit::Contain),
+            _ => panic!("expected an image item"),
+        }
     }
 }

@@ -72,11 +72,12 @@
 
             {
               "type": "Image",
-              "x": 110.0,
+              "x": 105.0,
               "y": 0.0,
-              "width": 35.56,
+              "width": 50.0,
               "height": 20.0,
-              "source": "../assets/report-rs-logo.png"
+              "source": "../assets/report-rs-logo.png",
+              "fit": "Contain"
             },
 
             {

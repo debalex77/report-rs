@@ -15,22 +15,32 @@ use report_core::layout::{LayoutEngine, RenderedItem, RenderedPage};
 use report_core::model::{HorizontalAlign, Report, VerticalAlign};
 
 use report_core::font_measurer::RealFontMeasurer;
+use report_core::image_layout::calculate_image_placement;
 use report_core::image_loader::load_image;
 use report_core::text_layout::pt_to_mm;
 
 const PX_PER_MM: f32 = 96.0 / 25.4;
 const PAGE_MARGIN_PX: f32 = 40.0;
 
+struct PreviewImage {
+    handle: Handle,
+    width: u32,
+    height: u32,
+}
+
 struct PreviewApp {
     pages: Vec<RenderedPage>,
     current_page: usize,
     zoom: f32,
     debug_overlay: bool,
-    images: HashMap<String, Handle>,
+    images: HashMap<String, PreviewImage>,
     report_dir: PathBuf,
 }
 
-fn load_preview_images(pages: &[RenderedPage], report_dir: &FsPath) -> HashMap<String, Handle> {
+fn load_preview_images(
+    pages: &[RenderedPage],
+    report_dir: &FsPath,
+) -> HashMap<String, PreviewImage> {
     let mut images = HashMap::new();
 
     for source in pages
@@ -57,9 +67,15 @@ fn load_preview_images(pages: &[RenderedPage], report_dir: &FsPath) -> HashMap<S
 
         match load_image(&resolved_path) {
             Ok(image) => {
+                let width = image.width;
+                let height = image.height;
                 images.insert(
                     source.clone(),
-                    Handle::from_rgba(image.width, image.height, image.rgba),
+                    PreviewImage {
+                        handle: Handle::from_rgba(width, height, image.rgba),
+                        width,
+                        height,
+                    },
                 );
             }
             Err(error) => {
@@ -114,7 +130,7 @@ struct PageCanvas<'a> {
     page: &'a RenderedPage,
     zoom: f32,
     debug_overlay: bool,
-    images: &'a HashMap<String, Handle>,
+    images: &'a HashMap<String, PreviewImage>,
 }
 
 fn draw_text_border(
@@ -384,15 +400,32 @@ impl<'a, Message> canvas::Program<Message> for PageCanvas<'a> {
                     width,
                     height,
                     source,
+                    fit,
                 } => {
-                    let bounds = Rectangle::new(
-                        Point::new(page_x + x.0 * scale, page_y + y.0 * scale),
-                        Size::new(width.0 * scale, height.0 * scale),
-                    );
-
                     if let Some(image) = self.images.get(source) {
-                        frame.draw_image(bounds, image);
+                        let placement = calculate_image_placement(
+                            *x,
+                            *y,
+                            *width,
+                            *height,
+                            image.width,
+                            image.height,
+                            *fit,
+                        );
+                        let bounds = Rectangle::new(
+                            Point::new(
+                                page_x + placement.x.0 * scale,
+                                page_y + placement.y.0 * scale,
+                            ),
+                            Size::new(placement.width.0 * scale, placement.height.0 * scale),
+                        );
+
+                        frame.draw_image(bounds, &image.handle);
                     } else {
+                        let bounds = Rectangle::new(
+                            Point::new(page_x + x.0 * scale, page_y + y.0 * scale),
+                            Size::new(width.0 * scale, height.0 * scale),
+                        );
                         let placeholder = Path::rectangle(bounds.position(), bounds.size());
                         let top_left = bounds.position();
                         let bottom_right =

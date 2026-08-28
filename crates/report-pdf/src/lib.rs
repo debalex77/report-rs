@@ -3,6 +3,7 @@ use printpdf::{
     RawImage, RawImageData, RawImageFormat, TextItem, XObjectId, XObjectTransform,
 };
 
+use report_core::image_layout::calculate_image_placement;
 use report_core::image_loader::{ImageLoadError, load_image};
 use report_core::layout::{RenderedItem, RenderedPage};
 
@@ -458,6 +459,7 @@ impl PdfRenderer {
                         width,
                         height,
                         source,
+                        fit,
                     } => {
                         let (image_id, pixel_width, pixel_height) =
                             if let Some(image) = image_cache.get(source) {
@@ -487,14 +489,28 @@ impl PdfRenderer {
                             };
 
                         if pixel_width > 0 && pixel_height > 0 && width.0 > 0.0 && height.0 > 0.0 {
+                            let placement = calculate_image_placement(
+                                *x,
+                                *y,
+                                *width,
+                                *height,
+                                pixel_width,
+                                pixel_height,
+                                *fit,
+                            );
+
                             ops.push(Op::UseXobject {
                                 id: image_id,
                                 transform: XObjectTransform {
-                                    translate_x: Some(Pt(mm_to_pt(x.0))),
-                                    translate_y: Some(Pt(mm_to_pt(page.height.0 - y.0 - height.0))),
+                                    translate_x: Some(Pt(mm_to_pt(placement.x.0))),
+                                    translate_y: Some(Pt(mm_to_pt(
+                                        page.height.0 - placement.y.0 - placement.height.0,
+                                    ))),
                                     rotate: None,
-                                    scale_x: Some(mm_to_pt(width.0) / pixel_width as f32),
-                                    scale_y: Some(mm_to_pt(height.0) / pixel_height as f32),
+                                    scale_x: Some(mm_to_pt(placement.width.0) / pixel_width as f32),
+                                    scale_y: Some(
+                                        mm_to_pt(placement.height.0) / pixel_height as f32,
+                                    ),
                                     dpi: Some(72.0),
                                 },
                             });

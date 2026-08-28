@@ -1,5 +1,7 @@
 use crate::datasource::{ReportContext, Row};
-use crate::model::{Band, Border, Color, HorizontalAlign, Item, Mm, Padding, Page, VerticalAlign};
+use crate::model::{
+    Band, Border, Color, HorizontalAlign, ImageFit, Item, Mm, Padding, Page, VerticalAlign,
+};
 use crate::text_layout::{ApproxTextMeasurer, TextLayout, TextLine, TextMeasurer};
 
 #[derive(Debug, Clone)]
@@ -68,6 +70,7 @@ pub enum RenderedItem {
         width: Mm,
         height: Mm,
         source: String,
+        fit: ImageFit,
     },
 }
 
@@ -300,6 +303,7 @@ impl LayoutEngine {
                         height: image.height,
 
                         source: image.source.clone(),
+                        fit: image.fit,
                     });
                 }
             }
@@ -543,8 +547,8 @@ mod tests {
     use crate::datasource::{ReportContext, Row};
     use crate::font::FontSpec;
     use crate::model::{
-        Band, BandKind, Color, HorizontalAlign, ImageItem, Item, Margins, Orientation, Page,
-        PageSize, TextItem, VerticalAlign, default_font_family, default_text_color,
+        Band, BandKind, Color, HorizontalAlign, ImageFit, ImageItem, Item, Margins, Orientation,
+        Page, PageSize, TextItem, VerticalAlign, default_font_family, default_text_color,
     };
 
     #[test]
@@ -633,6 +637,7 @@ mod tests {
                     width: Mm(40.0),
                     height: Mm(30.0),
                     source: "images/logo.png".to_string(),
+                    fit: ImageFit::Stretch,
                 })],
             }],
         };
@@ -648,12 +653,14 @@ mod tests {
                 width,
                 height,
                 source,
+                fit,
             } => {
                 assert_eq!(*x, Mm(15.0));
                 assert_eq!(*y, Mm(13.0));
                 assert_eq!(*width, Mm(40.0));
                 assert_eq!(*height, Mm(30.0));
                 assert_eq!(source, "images/logo.png");
+                assert_eq!(*fit, ImageFit::Stretch);
             }
             _ => panic!("Expected image item"),
         }
