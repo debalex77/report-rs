@@ -10,7 +10,7 @@ use iced::{
     font::{Style, Weight},
 };
 
-use report_core::datasource::ReportContext;
+use report_core::datasource::{ReportContext, Value};
 use report_core::layout::{LayoutEngine, RenderedItem, RenderedPage};
 use report_core::model::{HorizontalAlign, Report, VerticalAlign};
 
@@ -96,7 +96,8 @@ impl Default for PreviewApp {
 
         let measurer = RealFontMeasurer::new();
         let report = Report::from_file(path).expect("Cannot load report");
-        let context = ReportContext::new();
+        let mut context = ReportContext::new();
+        context.set_parameter("clinic", Value::String("Clinica Centrală".to_string()));
         let pages = LayoutEngine::render_with_measurer(&report.pages[0], &context, &measurer);
         let report_dir = FsPath::new(path)
             .parent()

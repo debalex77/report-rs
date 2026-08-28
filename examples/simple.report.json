@@ -103,7 +103,7 @@
               "width": 100.0,
               "height": 15.0,
 
-              "text": "URMATORUL BAND",
+              "text": "${parameter.clinic} | URMATORUL BAND",
 
               "font_size": 12.0,
 

@@ -328,6 +328,13 @@ impl LayoutEngine {
             result = result.replace(&pattern, &value.as_string());
         }
 
+        // Parameters use an explicit namespace so caller-supplied input does
+        // not collide with row fields or global variables.
+        for (key, value) in context.parameters() {
+            let pattern = format!("${{parameter.{}}}", key);
+            result = result.replace(&pattern, &value.as_string());
+        }
+
         result
     }
 
@@ -1020,6 +1027,55 @@ mod tests {
                 assert_eq!(text, "Medic: Dr. Ion Popescu");
             }
 
+            _ => panic!("Expected text item"),
+        }
+    }
+
+    #[test]
+    fn resolve_parameter() {
+        use crate::datasource::Value;
+
+        let page = Page {
+            size: PageSize::A4,
+            orientation: Orientation::Portrait,
+            margins: Margins {
+                left: Mm(10.0),
+                top: Mm(10.0),
+                right: Mm(10.0),
+                bottom: Mm(10.0),
+            },
+            bands: vec![Band {
+                kind: BandKind::ReportHeader,
+                height: Mm(20.0),
+                items: vec![Item::Text(TextItem {
+                    x: Mm(0.0),
+                    y: Mm(0.0),
+                    width: Mm(100.0),
+                    height: Mm(10.0),
+                    text: "Clinică: ${parameter.clinic}".to_string(),
+                    font_size: 12.0,
+                    font_family: default_font_family(),
+                    bold: false,
+                    italic: false,
+                    text_color: default_text_color(),
+                    horizontal_align: HorizontalAlign::Left,
+                    vertical_align: VerticalAlign::Top,
+                    word_wrap: false,
+                    auto_height: false,
+                    padding: Padding::default(),
+                    background: None,
+                    border: None,
+                })],
+            }],
+        };
+
+        let mut context = ReportContext::new();
+        context.set_parameter("clinic", Value::String("Clinica Centrală".to_string()));
+
+        let rendered = LayoutEngine::render_page(&page, &context);
+
+        match &rendered.items[0] {
+            RenderedItem::Text { text, .. } => assert_eq!(text, "Clinică: Clinica Centrală"),
             _ => panic!("Expected text item"),
         }
     }

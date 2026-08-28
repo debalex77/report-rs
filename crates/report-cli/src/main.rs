@@ -1,4 +1,4 @@
-use report_core::datasource::ReportContext;
+use report_core::datasource::{ReportContext, Value};
 use report_core::font_measurer::RealFontMeasurer;
 use report_core::layout::LayoutEngine;
 use report_core::model::Report;
@@ -20,7 +20,8 @@ fn main() {
 
     // Runtime context used to resolve variables and data sources
     // while the report is being rendered.
-    let context = ReportContext::new();
+    let mut context = ReportContext::new();
+    context.set_parameter("clinic", Value::String("Clinica Centrală".to_string()));
 
     // Use real font metrics so text wrapping and positioning
     // match the PDF output as closely as possible.

@@ -19,11 +19,13 @@ pub type Row = HashMap<String, Value>;
 ///
 /// A context can contain:
 /// - named tables used by data bands;
-/// - global variables used in text expressions.
+/// - global variables used in text expressions;
+/// - input parameters supplied by the calling application.
 #[derive(Debug, Default)]
 pub struct ReportContext {
     tables: HashMap<String, Vec<Row>>,
     variables: HashMap<String, Value>,
+    parameters: HashMap<String, Value>,
 }
 
 impl ReportContext {
@@ -32,6 +34,7 @@ impl ReportContext {
         Self {
             tables: HashMap::new(),
             variables: HashMap::new(),
+            parameters: HashMap::new(),
         }
     }
 
@@ -48,6 +51,21 @@ impl ReportContext {
     /// Returns all global report variables.
     pub fn variables(&self) -> &HashMap<String, Value> {
         &self.variables
+    }
+
+    /// Adds or replaces an input parameter.
+    pub fn set_parameter(&mut self, name: &str, value: Value) {
+        self.parameters.insert(name.to_string(), value);
+    }
+
+    /// Returns an input parameter by name.
+    pub fn parameter(&self, name: &str) -> Option<&Value> {
+        self.parameters.get(name)
+    }
+
+    /// Returns all input parameters.
+    pub fn parameters(&self) -> &HashMap<String, Value> {
+        &self.parameters
     }
 
     /// Adds or replaces a named table.
@@ -95,5 +113,17 @@ mod tests {
         let patients = context.table("patients").unwrap();
 
         assert_eq!(patients.len(), 1);
+    }
+
+    #[test]
+    fn set_and_get_parameter() {
+        let mut context = ReportContext::new();
+
+        context.set_parameter("clinic", Value::String("Clinica Centrală".to_string()));
+
+        match context.parameter("clinic") {
+            Some(Value::String(value)) => assert_eq!(value, "Clinica Centrală"),
+            _ => panic!("expected a string parameter"),
+        }
     }
 }
