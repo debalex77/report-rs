@@ -38,7 +38,12 @@ fn main() {
     }
 
     // Convert the rendered page model into a PDF document.
-    PdfRenderer::render_to_file(&rendered_pages, output_path).expect("Cannot create PDF");
+    let report_dir = std::path::Path::new(report_path)
+        .parent()
+        .expect("Report path should have a parent directory");
+
+    PdfRenderer::render_to_file_with_base_dir(&rendered_pages, output_path, report_dir)
+        .expect("Cannot create PDF");
 
     println!("PDF created:");
     println!("{output_path}");

@@ -1,5 +1,9 @@
+use std::collections::HashMap;
+use std::path::{Path as FsPath, PathBuf};
+
 use iced::mouse;
 use iced::widget::canvas::{self, Canvas, Frame, Geometry, Path};
+use iced::widget::image::Handle;
 use iced::widget::{button, column, container, row, scrollable, text};
 use iced::{
     Color, Element, Fill, Font, Point, Rectangle, Renderer, Size, Task, Theme,
@@ -11,6 +15,7 @@ use report_core::layout::{LayoutEngine, RenderedItem, RenderedPage};
 use report_core::model::{HorizontalAlign, Report, VerticalAlign};
 
 use report_core::font_measurer::RealFontMeasurer;
+use report_core::image_loader::load_image;
 use report_core::text_layout::pt_to_mm;
 
 const PX_PER_MM: f32 = 96.0 / 25.4;
@@ -21,6 +26,49 @@ struct PreviewApp {
     current_page: usize,
     zoom: f32,
     debug_overlay: bool,
+    images: HashMap<String, Handle>,
+    report_dir: PathBuf,
+}
+
+fn load_preview_images(pages: &[RenderedPage], report_dir: &FsPath) -> HashMap<String, Handle> {
+    let mut images = HashMap::new();
+
+    for source in pages
+        .iter()
+        .flat_map(|page| &page.items)
+        .filter_map(|item| {
+            if let RenderedItem::Image { source, .. } = item {
+                Some(source)
+            } else {
+                None
+            }
+        })
+    {
+        if images.contains_key(source) {
+            continue;
+        }
+
+        let source_path = PathBuf::from(source);
+        let resolved_path = if source_path.is_absolute() {
+            source_path
+        } else {
+            report_dir.join(source_path)
+        };
+
+        match load_image(&resolved_path) {
+            Ok(image) => {
+                images.insert(
+                    source.clone(),
+                    Handle::from_rgba(image.width, image.height, image.rgba),
+                );
+            }
+            Err(error) => {
+                eprintln!("Cannot load preview image '{source}': {error}");
+            }
+        }
+    }
+
+    images
 }
 
 impl Default for PreviewApp {
@@ -34,12 +82,18 @@ impl Default for PreviewApp {
         let report = Report::from_file(path).expect("Cannot load report");
         let context = ReportContext::new();
         let pages = LayoutEngine::render_with_measurer(&report.pages[0], &context, &measurer);
+        let report_dir = FsPath::new(path)
+            .parent()
+            .expect("Report path should have a parent directory");
+        let images = load_preview_images(&pages, report_dir);
 
         Self {
             pages,
             current_page: 0,
             zoom: 1.0,
             debug_overlay: false,
+            images,
+            report_dir: report_dir.to_path_buf(),
         }
     }
 }
@@ -60,6 +114,7 @@ struct PageCanvas<'a> {
     page: &'a RenderedPage,
     zoom: f32,
     debug_overlay: bool,
+    images: &'a HashMap<String, Handle>,
 }
 
 fn draw_text_border(
@@ -323,8 +378,37 @@ impl<'a, Message> canvas::Program<Message> for PageCanvas<'a> {
                     );
                 }
 
-                RenderedItem::Image { .. } => {
-                    // Image va fi implementat ulterior.
+                RenderedItem::Image {
+                    x,
+                    y,
+                    width,
+                    height,
+                    source,
+                } => {
+                    let bounds = Rectangle::new(
+                        Point::new(page_x + x.0 * scale, page_y + y.0 * scale),
+                        Size::new(width.0 * scale, height.0 * scale),
+                    );
+
+                    if let Some(image) = self.images.get(source) {
+                        frame.draw_image(bounds, image);
+                    } else {
+                        let placeholder = Path::rectangle(bounds.position(), bounds.size());
+                        let top_left = bounds.position();
+                        let bottom_right =
+                            Point::new(bounds.x + bounds.width, bounds.y + bounds.height);
+                        let top_right = Point::new(bounds.x + bounds.width, bounds.y);
+                        let bottom_left = Point::new(bounds.x, bounds.y + bounds.height);
+                        let stroke = canvas::Stroke {
+                            style: canvas::Style::Solid(Color::from_rgb8(180, 60, 60)),
+                            width: 1.0,
+                            ..Default::default()
+                        };
+
+                        frame.stroke(&placeholder, stroke.clone());
+                        frame.stroke(&Path::line(top_left, bottom_right), stroke.clone());
+                        frame.stroke(&Path::line(top_right, bottom_left), stroke);
+                    }
                 }
             }
         }
@@ -367,7 +451,11 @@ impl PreviewApp {
             Message::ExportPdf => {
                 let output_path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../output.pdf");
 
-                match report_pdf::PdfRenderer::render_to_file(&self.pages, output_path) {
+                match report_pdf::PdfRenderer::render_to_file_with_base_dir(
+                    &self.pages,
+                    output_path,
+                    &self.report_dir,
+                ) {
                     Ok(()) => {
                         println!("PDF created: {output_path}");
 
@@ -417,6 +505,7 @@ impl PreviewApp {
             page,
             zoom: self.zoom,
             debug_overlay: self.debug_overlay,
+            images: &self.images,
         })
         .width(canvas_width)
         .height(canvas_height);

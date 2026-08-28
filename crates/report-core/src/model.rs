@@ -543,4 +543,34 @@ mod tests {
         assert_eq!(page.printable_width(), Mm(277.0));
         assert_eq!(page.printable_height(), Mm(190.0));
     }
+
+    #[test]
+    fn image_item_json_round_trip() {
+        let json = r#"
+    {
+        "type": "Image",
+        "x": 10.0,
+        "y": 5.0,
+        "width": 40.0,
+        "height": 30.0,
+        "source": "images/logo.png"
+    }
+    "#;
+
+        let item: Item = serde_json::from_str(json).unwrap();
+
+        match &item {
+            Item::Image(image) => {
+                assert_eq!(image.x, Mm(10.0));
+                assert_eq!(image.y, Mm(5.0));
+                assert_eq!(image.width, Mm(40.0));
+                assert_eq!(image.height, Mm(30.0));
+                assert_eq!(image.source, "images/logo.png");
+            }
+            _ => panic!("expected an image item"),
+        }
+
+        let serialized = serde_json::to_string(&item).unwrap();
+        let _: Item = serde_json::from_str(&serialized).unwrap();
+    }
 }

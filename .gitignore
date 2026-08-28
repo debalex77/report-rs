@@ -2,3 +2,5 @@
 /.idea/
 output.pdf
 *.pdf
+.agent/
+.codex/

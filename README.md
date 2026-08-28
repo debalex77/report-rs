@@ -1,5 +1,7 @@
 # report-rs
 
+![report-rs logo](assets/report-rs-logo.png)
+
 A report generation engine written in Rust.
 
 `report-rs` is an experimental reporting engine inspired by traditional
@@ -30,6 +32,7 @@ the report model, layout engine, preview, and output rendering.
 - Borders
 - Line items
 - Rectangle items
+- Image items with PNG and JPEG support
 - Interactive report preview
 - Zoom and page navigation
 - PDF generation

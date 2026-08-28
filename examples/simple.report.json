@@ -71,6 +71,15 @@
             },
 
             {
+              "type": "Image",
+              "x": 110.0,
+              "y": 0.0,
+              "width": 35.56,
+              "height": 20.0,
+              "source": "../assets/report-rs-logo.png"
+            },
+
+            {
               "type": "Line",
               "x1": 0.0,
               "y1": 28.0,

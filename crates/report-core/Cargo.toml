@@ -10,3 +10,4 @@ thiserror = "2.0.20"
 
 cosmic-text = "0.14"
 fontdb = "0.16.2"
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png"] }

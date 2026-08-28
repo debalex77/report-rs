@@ -1,8 +1,9 @@
 use printpdf::{
     FontId, Line, LinePoint, Mm, Op, ParsedFont, PdfDocument, PdfPage, PdfSaveOptions, Point, Pt,
-    TextItem,
+    RawImage, RawImageData, RawImageFormat, TextItem, XObjectId, XObjectTransform,
 };
 
+use report_core::image_loader::{ImageLoadError, load_image};
 use report_core::layout::{RenderedItem, RenderedPage};
 
 use report_core::text_layout::{mm_to_pt, pt_to_mm};
@@ -31,6 +32,9 @@ pub enum PdfError {
 
     #[error("Font not found: {0}")]
     FontNotFound(String),
+
+    #[error(transparent)]
+    Image(#[from] ImageLoadError),
 }
 
 fn draw_border(
@@ -159,7 +163,16 @@ fn draw_background(
 
 impl PdfRenderer {
     pub fn render_to_file(pages: &[RenderedPage], path: impl AsRef<Path>) -> Result<(), PdfError> {
+        Self::render_to_file_with_base_dir(pages, path, ".")
+    }
+
+    pub fn render_to_file_with_base_dir(
+        pages: &[RenderedPage],
+        path: impl AsRef<Path>,
+        base_dir: impl AsRef<Path>,
+    ) -> Result<(), PdfError> {
         let mut document = PdfDocument::new("report-rs");
+        let base_dir = base_dir.as_ref();
 
         let mut warnings = Vec::new();
 
@@ -169,6 +182,7 @@ impl PdfRenderer {
 
         let font_resolver = SystemFontResolver::new();
         let mut font_cache: HashMap<FontKey, FontId> = HashMap::new();
+        let mut image_cache: HashMap<String, (XObjectId, u32, u32)> = HashMap::new();
 
         // ------------------------------------------------------------
         // Pages
@@ -438,8 +452,53 @@ impl PdfRenderer {
                     // ------------------------------------------------
                     // Image
                     // ------------------------------------------------
-                    RenderedItem::Image { .. } => {
-                        // Va fi implementat ulterior.
+                    RenderedItem::Image {
+                        x,
+                        y,
+                        width,
+                        height,
+                        source,
+                    } => {
+                        let (image_id, pixel_width, pixel_height) =
+                            if let Some(image) = image_cache.get(source) {
+                                image.clone()
+                            } else {
+                                let source_path = Path::new(source);
+                                let resolved_path = if source_path.is_absolute() {
+                                    source_path.to_path_buf()
+                                } else {
+                                    base_dir.join(source_path)
+                                };
+                                let image = load_image(resolved_path)?;
+                                let pixel_width = image.width;
+                                let pixel_height = image.height;
+                                let raw_image = RawImage {
+                                    pixels: RawImageData::U8(image.rgba),
+                                    width: pixel_width as usize,
+                                    height: pixel_height as usize,
+                                    data_format: RawImageFormat::RGBA8,
+                                    tag: source.as_bytes().to_vec(),
+                                };
+                                let image_id = document.add_image(&raw_image);
+                                let cached = (image_id, pixel_width, pixel_height);
+
+                                image_cache.insert(source.clone(), cached.clone());
+                                cached
+                            };
+
+                        if pixel_width > 0 && pixel_height > 0 && width.0 > 0.0 && height.0 > 0.0 {
+                            ops.push(Op::UseXobject {
+                                id: image_id,
+                                transform: XObjectTransform {
+                                    translate_x: Some(Pt(mm_to_pt(x.0))),
+                                    translate_y: Some(Pt(mm_to_pt(page.height.0 - y.0 - height.0))),
+                                    rotate: None,
+                                    scale_x: Some(mm_to_pt(width.0) / pixel_width as f32),
+                                    scale_y: Some(mm_to_pt(height.0) / pixel_height as f32),
+                                    dpi: Some(72.0),
+                                },
+                            });
+                        }
                     }
                 }
             }

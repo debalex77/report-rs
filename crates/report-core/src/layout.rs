@@ -543,8 +543,8 @@ mod tests {
     use crate::datasource::{ReportContext, Row};
     use crate::font::FontSpec;
     use crate::model::{
-        Band, BandKind, Color, HorizontalAlign, Item, Margins, Orientation, Page, PageSize,
-        TextItem, VerticalAlign, default_font_family, default_text_color,
+        Band, BandKind, Color, HorizontalAlign, ImageItem, Item, Margins, Orientation, Page,
+        PageSize, TextItem, VerticalAlign, default_font_family, default_text_color,
     };
 
     #[test]
@@ -610,6 +610,52 @@ mod tests {
             }
 
             _ => panic!("Expected text item"),
+        }
+    }
+
+    #[test]
+    fn render_image_item() {
+        let page = Page {
+            size: PageSize::A4,
+            orientation: Orientation::Portrait,
+            margins: Margins {
+                left: Mm(10.0),
+                top: Mm(10.0),
+                right: Mm(10.0),
+                bottom: Mm(10.0),
+            },
+            bands: vec![Band {
+                kind: BandKind::ReportHeader,
+                height: Mm(40.0),
+                items: vec![Item::Image(ImageItem {
+                    x: Mm(5.0),
+                    y: Mm(3.0),
+                    width: Mm(40.0),
+                    height: Mm(30.0),
+                    source: "images/logo.png".to_string(),
+                })],
+            }],
+        };
+
+        let rendered = LayoutEngine::render_page(&page, &ReportContext::new());
+
+        assert_eq!(rendered.items.len(), 1);
+
+        match &rendered.items[0] {
+            RenderedItem::Image {
+                x,
+                y,
+                width,
+                height,
+                source,
+            } => {
+                assert_eq!(*x, Mm(15.0));
+                assert_eq!(*y, Mm(13.0));
+                assert_eq!(*width, Mm(40.0));
+                assert_eq!(*height, Mm(30.0));
+                assert_eq!(source, "images/logo.png");
+            }
+            _ => panic!("Expected image item"),
         }
     }
 
