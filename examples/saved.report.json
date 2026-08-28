@@ -1,0 +1,16 @@
+{
+  "name": "Saved report",
+  "pages": [
+    {
+      "size": "A4",
+      "orientation": "Portrait",
+      "margins": {
+        "left": 10.0,
+        "top": 10.0,
+        "right": 10.0,
+        "bottom": 10.0
+      },
+      "bands": []
+    }
+  ]
+}

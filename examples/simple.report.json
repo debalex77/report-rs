@@ -1,0 +1,111 @@
+{
+  "name": "Test report",
+  "pages": [
+    {
+      "size": "A4",
+      "orientation": "Portrait",
+
+      "margins": {
+        "left": 10.0,
+        "top": 10.0,
+        "right": 10.0,
+        "bottom": 10.0
+      },
+
+      "bands": [
+        {
+          "kind": "ReportHeader",
+          "height": 25.0,
+
+          "items": [
+            {
+              "type": "Text",
+              "x": 0.0,
+              "y": 0.0,
+              "width": 60.0,
+              "height": 5.0,
+
+              "text": "Acesta este un text mai lung pentru testarea functiei auto height impreuna cu word wrap in report-rs",
+
+              "font_size": 12.0,
+              "font_family": "DejaVu Sans",
+              "bold": true,
+              "italic": false,
+
+              "horizontal_align": "Left",
+              "vertical_align": "Top",
+
+              "word_wrap": true,
+              "auto_height": true,
+
+              "padding": {
+                "left": 2.0,
+                "top": 2.0,
+                "right": 2.0,
+                "bottom": 2.0
+              },
+
+              "background": {
+                "r": 230,
+                "g": 230,
+                "b": 230,
+                "a": 255
+              },
+
+              "border": {
+                "left": true,
+                "top": true,
+                "right": true,
+                "bottom": true,
+                "width": 0.5
+              }
+            },
+
+            {
+              "type": "Rectangle",
+              "x": 105.0,
+              "y": 0.0,
+              "width": 50.0,
+              "height": 20.0,
+              "border_width": 0.3
+            },
+
+            {
+              "type": "Line",
+              "x1": 0.0,
+              "y1": 28.0,
+              "x2": 100.0,
+              "y2": 28.0,
+              "width": 0.3
+            }
+          ]
+        },
+
+        {
+          "kind": "ReportFooter",
+          "height": 10.0,
+
+          "items": [
+            {
+              "type": "Text",
+              "x": 0.0,
+              "y": 0.0,
+              "width": 100.0,
+              "height": 15.0,
+
+              "text": "URMATORUL BAND",
+
+              "font_size": 12.0,
+
+              "horizontal_align": "Right",
+              "vertical_align": "Bottom",
+
+              "word_wrap": false,
+              "auto_height": false
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

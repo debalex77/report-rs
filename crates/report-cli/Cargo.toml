@@ -1,0 +1,8 @@
+[package]
+name = "report-cli"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+report-core = { path = "../report-core" }
+report-pdf = { path = "../report-pdf" }
