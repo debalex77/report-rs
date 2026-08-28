@@ -6,4 +6,5 @@ members = [
     "crates/report-pdf",
     "crates/report-cli",
     "crates/report-preview",
+    "crates/report-designer",
 ]

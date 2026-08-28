@@ -10,7 +10,7 @@ use iced::{
     font::{Style, Weight},
 };
 
-use report_core::datasource::{ReportContext, Value};
+use report_core::datasource::{ReportContext, Row, Value};
 use report_core::layout::{LayoutEngine, RenderedItem, RenderedPage};
 use report_core::model::{HorizontalAlign, Report, VerticalAlign};
 
@@ -21,6 +21,49 @@ use report_core::text_layout::pt_to_mm;
 
 const PX_PER_MM: f32 = 96.0 / 25.4;
 const PAGE_MARGIN_PX: f32 = 40.0;
+
+fn example_context() -> ReportContext {
+    let units = [
+        ("Bucătăria principală", "Chef executiv"),
+        ("Zona de pregătire rece", "Sous-chef"),
+        ("Restaurant - salon principal", "Manager de sală"),
+        ("Terasă și servire exterioară", "Supervizor terasă"),
+        ("Bar și băuturi", "Manager bar"),
+        ("Depozit și recepție marfă", "Gestionar"),
+        ("Serviciul catering", "Coordonator catering"),
+        ("Igienizare și mentenanță", "Supervizor operațional"),
+    ];
+
+    let rows = units
+        .into_iter()
+        .enumerate()
+        .map(|(index, (unit_name, responsible_role))| {
+            let mut row = Row::new();
+            row.insert("nr".to_string(), Value::Number((index + 1) as f64));
+            row.insert(
+                "unit_name".to_string(),
+                Value::String(unit_name.to_string()),
+            );
+            row.insert(
+                "responsible_role".to_string(),
+                Value::String(responsible_role.to_string()),
+            );
+            row
+        })
+        .collect();
+
+    let mut context = ReportContext::new();
+    context.set_parameter(
+        "report_subtitle",
+        Value::String("Model demonstrativ pentru unități și zone de lucru".to_string()),
+    );
+    context.set_parameter(
+        "approval_role",
+        Value::String("Manager operațional".to_string()),
+    );
+    context.add_table("horeca_units", rows);
+    context
+}
 
 struct PreviewImage {
     handle: Handle,
@@ -96,8 +139,7 @@ impl Default for PreviewApp {
 
         let measurer = RealFontMeasurer::new();
         let report = Report::from_file(path).expect("Cannot load report");
-        let mut context = ReportContext::new();
-        context.set_parameter("clinic", Value::String("Clinica Centrală".to_string()));
+        let context = example_context();
         let pages = LayoutEngine::render_with_measurer(&report.pages[0], &context, &measurer);
         let report_dir = FsPath::new(path)
             .parent()

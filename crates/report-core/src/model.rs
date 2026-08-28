@@ -483,7 +483,7 @@ mod tests {
 
         println!("{:#?}", report);
 
-        assert_eq!(report.name, "Test report");
+        assert_eq!(report.name, "Structura operațională HoReCa");
         assert_eq!(report.pages.len(), 1);
     }
 

@@ -1,9 +1,52 @@
-use report_core::datasource::{ReportContext, Value};
+use report_core::datasource::{ReportContext, Row, Value};
 use report_core::font_measurer::RealFontMeasurer;
 use report_core::layout::LayoutEngine;
 use report_core::model::Report;
 
 use report_pdf::PdfRenderer;
+
+fn example_context() -> ReportContext {
+    let units = [
+        ("Bucătăria principală", "Chef executiv"),
+        ("Zona de pregătire rece", "Sous-chef"),
+        ("Restaurant - salon principal", "Manager de sală"),
+        ("Terasă și servire exterioară", "Supervizor terasă"),
+        ("Bar și băuturi", "Manager bar"),
+        ("Depozit și recepție marfă", "Gestionar"),
+        ("Serviciul catering", "Coordonator catering"),
+        ("Igienizare și mentenanță", "Supervizor operațional"),
+    ];
+
+    let rows = units
+        .into_iter()
+        .enumerate()
+        .map(|(index, (unit_name, responsible_role))| {
+            let mut row = Row::new();
+            row.insert("nr".to_string(), Value::Number((index + 1) as f64));
+            row.insert(
+                "unit_name".to_string(),
+                Value::String(unit_name.to_string()),
+            );
+            row.insert(
+                "responsible_role".to_string(),
+                Value::String(responsible_role.to_string()),
+            );
+            row
+        })
+        .collect();
+
+    let mut context = ReportContext::new();
+    context.set_parameter(
+        "report_subtitle",
+        Value::String("Model demonstrativ pentru unități și zone de lucru".to_string()),
+    );
+    context.set_parameter(
+        "approval_role",
+        Value::String("Manager operațional".to_string()),
+    );
+    context.add_table("horeca_units", rows);
+    context
+}
 
 fn main() {
     // Build absolute paths relative to the report-cli crate.
@@ -20,8 +63,7 @@ fn main() {
 
     // Runtime context used to resolve variables and data sources
     // while the report is being rendered.
-    let mut context = ReportContext::new();
-    context.set_parameter("clinic", Value::String("Clinica Centrală".to_string()));
+    let context = example_context();
 
     // Use real font metrics so text wrapping and positioning
     // match the PDF output as closely as possible.

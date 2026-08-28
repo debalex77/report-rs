@@ -1,117 +1,219 @@
 {
-  "name": "Test report",
+  "name": "Structura operațională HoReCa",
   "pages": [
     {
       "size": "A4",
       "orientation": "Portrait",
-
-      "margins": {
-        "left": 10.0,
-        "top": 10.0,
-        "right": 10.0,
-        "bottom": 10.0
-      },
-
+      "margins": { "left": 10.0, "top": 10.0, "right": 10.0, "bottom": 10.0 },
       "bands": [
         {
-          "kind": "ReportHeader",
-          "height": 25.0,
-
+          "kind": "PageHeader",
+          "height": 36.0,
           "items": [
             {
-              "type": "Text",
+              "type": "Image",
               "x": 0.0,
               "y": 0.0,
-              "width": 60.0,
-              "height": 5.0,
-
-              "text": "Acesta este un text mai lung pentru testarea functiei auto height impreuna cu word wrap in report-rs",
-
-              "font_size": 12.0,
-              "font_family": "DejaVu Sans",
-              "bold": true,
-              "italic": false,
-
-              "horizontal_align": "Left",
-              "vertical_align": "Top",
-
-              "word_wrap": true,
-              "auto_height": true,
-
-              "padding": {
-                "left": 2.0,
-                "top": 2.0,
-                "right": 2.0,
-                "bottom": 2.0
-              },
-
-              "background": {
-                "r": 230,
-                "g": 230,
-                "b": 230,
-                "a": 255
-              },
-
-              "border": {
-                "left": true,
-                "top": true,
-                "right": true,
-                "bottom": true,
-                "width": 0.5
-              }
-            },
-
-            {
-              "type": "Rectangle",
-              "x": 105.0,
-              "y": 0.0,
-              "width": 50.0,
-              "height": 20.0,
-              "border_width": 0.3
-            },
-
-            {
-              "type": "Image",
-              "x": 105.0,
-              "y": 0.0,
-              "width": 50.0,
-              "height": 20.0,
+              "width": 42.0,
+              "height": 14.0,
               "source": "../assets/report-rs-logo.png",
               "fit": "Contain"
             },
-
+            {
+              "type": "Text",
+              "x": 45.0,
+              "y": 0.0,
+              "width": 145.0,
+              "height": 8.0,
+              "text": "STRUCTURA OPERAȚIONALĂ HORECA",
+              "font_size": 15.0,
+              "bold": true,
+              "horizontal_align": "Center",
+              "vertical_align": "Center",
+              "word_wrap": false,
+              "auto_height": false
+            },
+            {
+              "type": "Text",
+              "x": 45.0,
+              "y": 9.0,
+              "width": 145.0,
+              "height": 6.0,
+              "text": "${parameter.report_subtitle}",
+              "font_size": 11.0,
+              "horizontal_align": "Center",
+              "vertical_align": "Center",
+              "word_wrap": false,
+              "auto_height": false
+            },
             {
               "type": "Line",
               "x1": 0.0,
-              "y1": 28.0,
-              "x2": 100.0,
-              "y2": 28.0,
-              "width": 0.3
+              "y1": 20.0,
+              "x2": 190.0,
+              "y2": 20.0,
+              "width": 0.5
+            },
+            {
+              "type": "Text",
+              "x": 0.0,
+              "y": 24.0,
+              "width": 15.0,
+              "height": 10.0,
+              "text": "Nr.",
+              "font_size": 10.0,
+              "bold": true,
+              "horizontal_align": "Center",
+              "vertical_align": "Center",
+              "word_wrap": false,
+              "auto_height": false,
+              "background": { "r": 220, "g": 231, "b": 241, "a": 255 },
+              "border": { "left": true, "top": true, "right": true, "bottom": true, "width": 0.3 }
+            },
+            {
+              "type": "Text",
+              "x": 15.0,
+              "y": 24.0,
+              "width": 100.0,
+              "height": 10.0,
+              "text": "Unitate / zonă",
+              "font_size": 10.0,
+              "bold": true,
+              "horizontal_align": "Center",
+              "vertical_align": "Center",
+              "word_wrap": false,
+              "auto_height": false,
+              "background": { "r": 220, "g": 231, "b": 241, "a": 255 },
+              "border": { "left": true, "top": true, "right": true, "bottom": true, "width": 0.3 }
+            },
+            {
+              "type": "Text",
+              "x": 115.0,
+              "y": 24.0,
+              "width": 75.0,
+              "height": 10.0,
+              "text": "Responsabil",
+              "font_size": 10.0,
+              "bold": true,
+              "horizontal_align": "Center",
+              "vertical_align": "Center",
+              "word_wrap": false,
+              "auto_height": false,
+              "background": { "r": 220, "g": 231, "b": 241, "a": 255 },
+              "border": { "left": true, "top": true, "right": true, "bottom": true, "width": 0.3 }
             }
           ]
         },
-
         {
-          "kind": "ReportFooter",
+          "kind": { "Data": { "source": "horeca_units" } },
           "height": 10.0,
-
           "items": [
             {
               "type": "Text",
               "x": 0.0,
               "y": 0.0,
+              "width": 15.0,
+              "height": 10.0,
+              "text": "${nr}",
+              "font_size": 10.0,
+              "horizontal_align": "Center",
+              "vertical_align": "Center",
+              "word_wrap": false,
+              "auto_height": false,
+              "border": { "left": true, "top": true, "right": true, "bottom": true, "width": 0.3 }
+            },
+            {
+              "type": "Text",
+              "x": 15.0,
+              "y": 0.0,
               "width": 100.0,
-              "height": 15.0,
-
-              "text": "${parameter.clinic} | URMATORUL BAND",
-
-              "font_size": 12.0,
-
-              "horizontal_align": "Right",
-              "vertical_align": "Bottom",
-
+              "height": 10.0,
+              "text": "${unit_name}",
+              "font_size": 10.0,
+              "horizontal_align": "Left",
+              "vertical_align": "Center",
+              "word_wrap": false,
+              "auto_height": false,
+              "padding": { "left": 2.0, "top": 0.0, "right": 2.0, "bottom": 0.0 },
+              "border": { "left": true, "top": true, "right": true, "bottom": true, "width": 0.3 }
+            },
+            {
+              "type": "Text",
+              "x": 115.0,
+              "y": 0.0,
+              "width": 75.0,
+              "height": 10.0,
+              "text": "${responsible_role}",
+              "font_size": 10.0,
+              "horizontal_align": "Left",
+              "vertical_align": "Center",
+              "word_wrap": false,
+              "auto_height": false,
+              "padding": { "left": 2.0, "top": 0.0, "right": 2.0, "bottom": 0.0 },
+              "border": { "left": true, "top": true, "right": true, "bottom": true, "width": 0.3 }
+            }
+          ]
+        },
+        {
+          "kind": "ReportFooter",
+          "height": 35.0,
+          "items": [
+            {
+              "type": "Line",
+              "x1": 0.0,
+              "y1": 5.0,
+              "x2": 190.0,
+              "y2": 5.0,
+              "width": 0.3
+            },
+            {
+              "type": "Text",
+              "x": 115.0,
+              "y": 9.0,
+              "width": 75.0,
+              "height": 6.0,
+              "text": "APROBAT",
+              "font_size": 11.0,
+              "bold": true,
+              "horizontal_align": "Center",
+              "vertical_align": "Center",
               "word_wrap": false,
               "auto_height": false
+            },
+            {
+              "type": "Text",
+              "x": 115.0,
+              "y": 16.0,
+              "width": 75.0,
+              "height": 5.0,
+              "text": "Responsabil aprobare",
+              "font_size": 10.0,
+              "horizontal_align": "Center",
+              "vertical_align": "Center",
+              "word_wrap": false,
+              "auto_height": false
+            },
+            {
+              "type": "Text",
+              "x": 115.0,
+              "y": 22.0,
+              "width": 75.0,
+              "height": 5.0,
+              "text": "${parameter.approval_role}",
+              "font_size": 10.0,
+              "italic": true,
+              "horizontal_align": "Center",
+              "vertical_align": "Center",
+              "word_wrap": false,
+              "auto_height": false
+            },
+            {
+              "type": "Line",
+              "x1": 125.0,
+              "y1": 31.0,
+              "x2": 180.0,
+              "y2": 31.0,
+              "width": 0.3
             }
           ]
         }

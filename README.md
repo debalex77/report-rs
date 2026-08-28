@@ -20,6 +20,7 @@ the report model, layout engine, preview, and output rendering.
 - Data bands
 - Automatic pagination
 - Data source tables and report variables
+- Runtime report parameters
 - Text items
 - Word wrapping
 - Automatic text height
@@ -37,6 +38,7 @@ the report model, layout engine, preview, and output rendering.
 - Zoom and page navigation
 - PDF generation
 - PDF export directly from the preview
+- Initial report designer with item selection and JSON reload/save
 
 ## Project structure
 
@@ -46,6 +48,7 @@ report-rs/
 │   ├── report-core/
 │   ├── report-pdf/
 │   ├── report-preview/
+│   ├── report-designer/
 │   └── report-cli/
 ├── examples/
 ├── Cargo.toml
@@ -78,6 +81,13 @@ PDF generation is implemented using `printpdf`.
 Interactive graphical report preview implemented using `iced`.
 
 It supports page navigation, zooming, debug visualization, and PDF export.
+
+### report-designer
+
+Early graphical report designer implemented using `iced`.
+
+It can load a report definition, display its bands and items on a design
+canvas, select and drag items, inspect basic geometry, reload, and save JSON.
 
 ### report-cli
 
@@ -125,6 +135,12 @@ Run the graphical preview using:
 cargo run -p report-preview
 ```
 
+Run the report designer using:
+
+```bash
+cargo run -p report-designer -- examples/simple.report.json
+```
+
 ## Building
 
 Build the complete workspace:
@@ -155,13 +171,11 @@ engine evolves.
 
 ## Planned features
 
-- Image items
 - Improved font fallback
 - Additional data source support
 - Expressions
-- Report parameters
 - More advanced page layout
-- Report designer
+- Drag, resize, and property editing in the report designer
 
 ## License
 
