@@ -10,6 +10,8 @@ use iced::{
     font::{Style, Weight},
 };
 
+use report_core::common;
+
 use report_core::datasource::{ReportContext, Row, Value};
 use report_core::layout::{LayoutEngine, RenderedItem, RenderedPage};
 use report_core::model::{HorizontalAlign, Report, VerticalAlign};
@@ -591,19 +593,35 @@ impl PreviewApp {
         let zoom_percent = (self.zoom * 100.0).round() as u32;
 
         let toolbar = row![
-            button("◀").on_press(Message::PreviousPage),
+            button("◀")
+                .style(common::style_button(6.0))
+                .on_press(Message::PreviousPage),
             text(format!(
                 "Page {} / {}",
                 self.current_page + 1,
                 self.pages.len()
             )),
-            button("▶").on_press(Message::NextPage),
-            button("−").on_press(Message::ZoomOut),
-            button(text(format!("{}%", zoom_percent))).on_press(Message::ZoomReset),
-            button("+").on_press(Message::ZoomIn),
-            button("Debug").on_press(Message::ToggleDebug),
-            button("Export PDF").on_press(Message::ExportPdf),
-            button("Open PDF").on_press(Message::OpenPdf)
+            button("▶")
+                .style(common::style_button(6.0))
+                .on_press(Message::NextPage),
+            button("−")
+                .style(common::style_button(6.0))
+                .on_press(Message::ZoomOut),
+            button(text(format!("{}%", zoom_percent)))
+                .style(common::style_button(6.0))
+                .on_press(Message::ZoomReset),
+            button("+")
+                .style(common::style_button(6.0))
+                .on_press(Message::ZoomIn),
+            button("Debug")
+                .style(common::style_button(6.0))
+                .on_press(Message::ToggleDebug),
+            button("Export PDF")
+                .style(common::style_button(6.0))
+                .on_press(Message::ExportPdf),
+            button("Open PDF")
+                .style(common::style_button(6.0))
+                .on_press(Message::OpenPdf)
         ]
         .spacing(10)
         .align_y(iced::Alignment::Center);

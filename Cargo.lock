@@ -3562,6 +3562,7 @@ version = "0.1.0"
 dependencies = [
  "cosmic-text 0.14.2",
  "fontdb 0.16.2",
+ "iced",
  "image",
  "serde",
  "serde_json",

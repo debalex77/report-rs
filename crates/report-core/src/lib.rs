@@ -1,3 +1,4 @@
+pub mod common;
 pub mod datasource;
 pub mod font;
 pub mod font_measurer;

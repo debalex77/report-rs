@@ -5,6 +5,7 @@ use iced::widget::canvas::{self, Canvas, Frame, Geometry, Path};
 use iced::widget::{button, column, container, row, scrollable, text};
 use iced::{Color, Element, Fill, Point, Rectangle, Renderer, Size, Task, Theme};
 
+use report_core::common;
 use report_core::model::{BandKind, Item, Page, Report};
 
 // CSS pixels per millimeter at the standard 96 DPI screen scale.
@@ -215,12 +216,21 @@ impl DesignerApp {
             .width(Fill)
             .height(Fill);
         let toolbar = row![
-            button("Reload").on_press(Message::Reload),
-            button("Save JSON").on_press(Message::Save),
-            button("−").on_press(Message::ZoomOut),
+            button("Reload")
+                .style(common::style_button(6.0))
+                .on_press(Message::Reload),
+            button("Save JSON")
+                .style(common::style_button(6.0))
+                .on_press(Message::Save),
+            button("−")
+                .style(common::style_button(8.0))
+                .on_press(Message::ZoomOut),
             button(text(format!("{}%", (self.zoom * 100.0).round() as u32)))
+                .style(common::style_button(6.0))
                 .on_press(Message::ZoomReset),
-            button("+").on_press(Message::ZoomIn),
+            button("+")
+                .style(common::style_button(6.0))
+                .on_press(Message::ZoomIn),
             text(self.path.display().to_string()).size(13)
         ]
         .spacing(10)

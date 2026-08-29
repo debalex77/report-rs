@@ -1,3 +1,21 @@
+<p align="center">
+  <a href="https://www.rust-lang.org/">
+    <img src="https://img.shields.io/badge/Rust-2024-orange?logo=rust" alt="Rust">
+  </a>
+<a href="https://iced.rs/">
+  <img src="https://img.shields.io/badge/GUI-Iced-blue?logo=rust&logoColor=white" alt="Iced">
+</a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT">
+  </a>
+  <a href="https://github.com/debalex77/report-rs/stargazers">
+    <img src="https://img.shields.io/github/stars/debalex77/report-rs?style=flat" alt="GitHub stars">
+  </a>
+  <a href="https://github.com/debalex77/report-rs/commits/main">
+    <img src="https://img.shields.io/github/last-commit/debalex77/report-rs" alt="Last commit">
+  </a>
+</p>
+
 # report-rs
 
 ![report-rs logo](assets/report-rs-logo.png)
@@ -10,7 +28,7 @@ band-based report systems such as LimeReport.
 The project is being developed from scratch in Rust and focuses on separating
 the report model, layout engine, preview, and output rendering.
 
-## Current features
+## ✨ Current features
 
 - JSON report serialization and deserialization
 - Page size, orientation, and margins
@@ -40,7 +58,7 @@ the report model, layout engine, preview, and output rendering.
 - PDF export directly from the preview
 - Initial report designer with item selection and JSON reload/save
 
-## Project structure
+## 🧱 Project structure
 
 ```text
 report-rs/
@@ -94,7 +112,7 @@ canvas, select and drag items, inspect basic geometry, reload, and save JSON.
 Small command-line application demonstrating how to load a report, run the
 layout engine, and generate a PDF document.
 
-## Report pipeline
+## 📈 Report pipeline
 
 ```text
 Report JSON
@@ -115,7 +133,7 @@ Preview       PDF
 The layout engine is independent from the final output format. Both the
 preview and PDF renderer consume the same rendered page representation.
 
-## Example
+## 📝 Example
 
 An example report is available in:
 
@@ -141,7 +159,7 @@ Run the report designer using:
 cargo run -p report-designer -- examples/simple.report.json
 ```
 
-## Building
+## 📦 Building
 
 Build the complete workspace:
 
@@ -161,7 +179,7 @@ Format the source code:
 cargo fmt --all
 ```
 
-## Status
+## 🟢 Status
 
 `report-rs` is currently in early development.
 
@@ -169,7 +187,7 @@ The report model, text layout, pagination, preview, and basic PDF rendering
 are functional. More report items and rendering features will be added as the
 engine evolves.
 
-## Planned features
+## 💭 Planned features
 
 - Improved font fallback
 - Additional data source support
@@ -177,6 +195,6 @@ engine evolves.
 - More advanced page layout
 - Drag, resize, and property editing in the report designer
 
-## License
+## ⚖️ License
 
 This project is licensed under the MIT License.
