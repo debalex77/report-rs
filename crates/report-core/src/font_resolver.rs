@@ -1,5 +1,6 @@
 use crate::font::FontSpec;
 use cosmic_text::fontdb::{Database, Family, Query, Stretch, Style, Weight};
+use std::collections::BTreeSet;
 
 /// Physical font selected for a FontSpec.
 #[derive(Debug, Clone)]
@@ -56,6 +57,16 @@ impl SystemFontResolver {
 
         resolved
     }
+
+    /// Returns the unique font family names installed in the operating system.
+    pub fn families(&self) -> Vec<String> {
+        self.db
+            .faces()
+            .flat_map(|face| face.families.iter().map(|(name, _)| name.clone()))
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect()
+    }
 }
 
 impl Default for SystemFontResolver {
@@ -104,5 +115,12 @@ mod tests {
 
             assert!(!resolved.data.is_empty());
         }
+    }
+
+    #[test]
+    fn list_system_font_families() {
+        let families = SystemFontResolver::new().families();
+
+        assert!(families.iter().any(|family| family == "DejaVu Sans"));
     }
 }

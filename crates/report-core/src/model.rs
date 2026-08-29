@@ -168,6 +168,21 @@ pub enum Item {
     Line(LineItem),
     Rectangle(RectangleItem),
     Image(ImageItem),
+    HorizontalLayout(LayoutItem),
+    VerticalLayout(LayoutItem),
+}
+
+/// A container that will arrange its child items along one axis.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LayoutItem {
+    #[serde(default)]
+    pub name: String,
+    pub x: Mm,
+    pub y: Mm,
+    pub width: Mm,
+    pub height: Mm,
+    #[serde(default)]
+    pub items: Vec<Item>,
 }
 
 /// An RGBA color with one byte per channel.
@@ -197,7 +212,7 @@ impl Color {
     };
 
     /// Creates a fully opaque color from red, green, and blue channels.
-    pub fn rgb(r: u8, g: u8, b: u8) -> Self {
+    pub const fn rgb(r: u8, g: u8, b: u8) -> Self {
         Self { r, g, b, a: 255 }
     }
 }
@@ -256,6 +271,8 @@ fn default_border_width() -> f32 {
 /// points. Text may contain `${name}` placeholders resolved during layout.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TextItem {
+    #[serde(default)]
+    pub name: String,
     pub x: Mm,
     pub y: Mm,
     pub width: Mm,
@@ -308,6 +325,8 @@ impl TextItem {
 /// A line segment positioned relative to its containing band.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LineItem {
+    #[serde(default)]
+    pub name: String,
     pub x1: Mm,
     pub y1: Mm,
     pub x2: Mm,
@@ -318,6 +337,8 @@ pub struct LineItem {
 /// An outlined rectangle positioned relative to its containing band.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RectangleItem {
+    #[serde(default)]
+    pub name: String,
     pub x: Mm,
     pub y: Mm,
     pub width: Mm,
@@ -332,6 +353,8 @@ pub struct RectangleItem {
 /// responsibilities rather than concerns of the report model.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageItem {
+    #[serde(default)]
+    pub name: String,
     pub x: Mm,
     pub y: Mm,
     pub width: Mm,
@@ -418,6 +441,7 @@ mod tests {
 
                         items: vec![
                             Item::Text(TextItem {
+                                name: String::new(),
                                 x: Mm(10.0),
                                 y: Mm(5.0),
                                 width: Mm(190.0),
@@ -445,6 +469,7 @@ mod tests {
                                 border: None,
                             }),
                             Item::Line(LineItem {
+                                name: String::new(),
                                 x1: Mm(10.0),
                                 y1: Mm(18.0),
                                 x2: Mm(200.0),
@@ -609,6 +634,22 @@ mod tests {
         match item {
             Item::Image(image) => assert_eq!(image.fit, ImageFit::Contain),
             _ => panic!("expected an image item"),
+        }
+    }
+
+    #[test]
+    fn layout_item_json_round_trip() {
+        for item_type in ["HorizontalLayout", "VerticalLayout"] {
+            let json = format!(
+                r#"{{"type":"{item_type}","name":"layout1","x":0.0,"y":0.0,"width":100.0,"height":20.0,"items":[]}}"#
+            );
+            let item: Item = serde_json::from_str(&json).unwrap();
+            assert!(matches!(
+                item,
+                Item::HorizontalLayout(_) | Item::VerticalLayout(_)
+            ));
+            let serialized = serde_json::to_string(&item).unwrap();
+            let _: Item = serde_json::from_str(&serialized).unwrap();
         }
     }
 }

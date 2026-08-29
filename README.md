@@ -56,7 +56,13 @@ the report model, layout engine, preview, and output rendering.
 - Zoom and page navigation
 - PDF generation
 - PDF export directly from the preview
-- Initial report designer with item selection and JSON reload/save
+- Graphical report designer with New, Load, Save, Reload, Undo, and Redo
+- Designer toolbox for bands, text, images, shapes, and layouts
+- Interactive item selection, drag, resize, and property editing
+- Collapsible Properties panel with geometry, text, font, color, and alignment controls
+- Millimeter rulers, design grid, zoom, and resizeable side panels
+- Horizontal and vertical layouts with nested-layout support
+- Designer settings for page orientation, margins, and default font family
 
 ## 🧱 Project structure
 
@@ -102,10 +108,14 @@ It supports page navigation, zooming, debug visualization, and PDF export.
 
 ### report-designer
 
-Early graphical report designer implemented using `iced`.
+Graphical report designer implemented using `iced`.
 
-It can load a report definition, display its bands and items on a design
-canvas, select and drag items, inspect basic geometry, reload, and save JSON.
+It can create, load, edit, and save JSON report definitions. The design canvas
+provides millimeter rulers and a grid, band and item tools, drag and resize
+handles, Undo/Redo history, and a resizeable Properties panel. Text, image,
+shape, horizontal-layout, and vertical-layout items can be added visually.
+Layouts can contain other layouts while their nested items remain selectable
+and editable.
 
 ### report-cli
 
@@ -159,6 +169,12 @@ Run the report designer using:
 cargo run -p report-designer -- examples/simple.report.json
 ```
 
+Start it with an empty report using:
+
+```bash
+cargo run -p report-designer
+```
+
 ## 📦 Building
 
 Build the complete workspace:
@@ -192,8 +208,9 @@ engine evolves.
 - Improved font fallback
 - Additional data source support
 - Expressions
-- More advanced page layout
-- Drag, resize, and property editing in the report designer
+- More advanced page layout and layout constraints
+- Database-backed report data and query configuration
+- Additional Designer property editors and item types
 
 ## ⚖️ License
 

@@ -192,6 +192,10 @@ impl LayoutEngine {
                 Item::Rectangle(rect) => rect.y + rect.height,
 
                 Item::Image(image) => image.y + image.height,
+
+                Item::HorizontalLayout(layout) | Item::VerticalLayout(layout) => {
+                    layout.y + layout.height
+                }
             };
 
             if required_height > height {
@@ -305,6 +309,23 @@ impl LayoutEngine {
                         source: image.source.clone(),
                         fit: image.fit,
                     });
+                }
+
+                Item::HorizontalLayout(layout) | Item::VerticalLayout(layout) => {
+                    let nested = Band {
+                        kind: crate::model::BandKind::ReportHeader,
+                        height: layout.height,
+                        items: layout.items.clone(),
+                    };
+                    Self::render_band(
+                        &nested,
+                        offset_x + layout.x,
+                        offset_y + layout.y,
+                        row,
+                        context,
+                        measurer,
+                        rendered_items,
+                    );
                 }
             }
         }
@@ -576,6 +597,7 @@ mod tests {
                 height: Mm(20.0),
 
                 items: vec![Item::Text(TextItem {
+                    name: String::new(),
                     x: Mm(5.0),
                     y: Mm(3.0),
                     width: Mm(100.0),
@@ -639,6 +661,7 @@ mod tests {
                 kind: BandKind::ReportHeader,
                 height: Mm(40.0),
                 items: vec![Item::Image(ImageItem {
+                    name: String::new(),
                     x: Mm(5.0),
                     y: Mm(3.0),
                     width: Mm(40.0),
@@ -733,6 +756,7 @@ mod tests {
                     height: Mm(20.0),
 
                     items: vec![Item::Text(TextItem {
+                        name: String::new(),
                         x: Mm(0.0),
                         y: Mm(0.0),
                         width: Mm(100.0),
@@ -779,6 +803,7 @@ mod tests {
                     height: Mm(15.0),
 
                     items: vec![Item::Text(TextItem {
+                        name: String::new(),
                         x: Mm(0.0),
                         y: Mm(0.0),
                         width: Mm(100.0),
@@ -893,6 +918,7 @@ mod tests {
                 height: Mm(20.0),
 
                 items: vec![Item::Text(TextItem {
+                    name: String::new(),
                     x: Mm(0.0),
                     y: Mm(0.0),
 
@@ -980,6 +1006,7 @@ mod tests {
                 height: Mm(20.0),
 
                 items: vec![Item::Text(TextItem {
+                    name: String::new(),
                     x: Mm(0.0),
                     y: Mm(0.0),
                     width: Mm(100.0),
@@ -1048,6 +1075,7 @@ mod tests {
                 kind: BandKind::ReportHeader,
                 height: Mm(20.0),
                 items: vec![Item::Text(TextItem {
+                    name: String::new(),
                     x: Mm(0.0),
                     y: Mm(0.0),
                     width: Mm(100.0),
@@ -1099,6 +1127,7 @@ mod tests {
                     height: Mm(10.0),
 
                     items: vec![Item::Text(TextItem {
+                        name: String::new(),
                         x: Mm(0.0),
                         y: Mm(0.0),
                         width: Mm(30.0),
@@ -1137,6 +1166,7 @@ mod tests {
                     height: Mm(10.0),
 
                     items: vec![Item::Text(TextItem {
+                        name: String::new(),
                         x: Mm(0.0),
                         y: Mm(0.0),
                         width: Mm(100.0),
@@ -1249,6 +1279,7 @@ mod tests {
             height: Mm(10.0),
 
             items: vec![Item::Rectangle(RectangleItem {
+                name: String::new(),
                 x: Mm(0.0),
                 y: Mm(20.0),
                 width: Mm(50.0),
