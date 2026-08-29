@@ -1,0 +1,277 @@
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
+
+use iced::mouse;
+use iced::widget::canvas::{self, Canvas, Frame, Geometry, Path};
+use iced::widget::{
+    Space, button, combo_box, container, mouse_area, opaque, row, scrollable, stack, svg, text,
+    text_editor, text_input,
+};
+use iced::{
+    Background, Color, Element, Fill, Point, Rectangle, Renderer, Size, Task, Theme, keyboard,
+};
+
+use report_core::common;
+use report_core::font::FontSpec;
+use report_core::font_resolver::SystemFontResolver;
+use report_core::image_layout::calculate_image_placement;
+use report_core::model::{
+    Band, BandKind, Color as ReportColor, HorizontalAlign, ImageFit, ImageItem, Item, LayoutItem,
+    Margins, Mm, Orientation, Padding, Page, PageSize, RectangleItem, Report, TextItem,
+    VerticalAlign,
+};
+
+#[cfg(test)]
+#[path = "tests.rs"]
+mod app_tests;
+#[path = "clipboard.rs"]
+mod clipboard;
+#[path = "canvas.rs"]
+mod designer_canvas;
+#[path = "document.rs"]
+mod document;
+#[path = "app/document_actions.rs"]
+mod document_actions;
+#[path = "files.rs"]
+mod files;
+#[path = "history.rs"]
+mod history;
+#[path = "images.rs"]
+mod images;
+#[path = "inspector/mod.rs"]
+mod inspector;
+#[path = "menus.rs"]
+mod menus;
+#[path = "message.rs"]
+mod message;
+#[path = "app/properties.rs"]
+mod properties;
+#[path = "app/resources.rs"]
+mod resources;
+#[path = "settings.rs"]
+mod settings;
+#[path = "shortcuts.rs"]
+mod shortcuts;
+#[path = "state.rs"]
+mod state;
+#[path = "app/toolbar.rs"]
+mod toolbar;
+#[path = "app/ui_helpers.rs"]
+mod ui_helpers;
+#[path = "app/update.rs"]
+mod update;
+#[path = "app/view.rs"]
+mod view;
+use document::*;
+use files::{
+    ensure_json_extension, report_directory, select_image_file, select_report_file,
+    select_report_save_file,
+};
+use images::{DesignerImage, load_designer_images};
+use message::Message;
+use settings::{DesignerSettings, MarginField, page_font_family};
+use shortcuts::keyboard_shortcuts;
+use state::{
+    AppMenu, CollapsedGroups, DesignerTool, DragOperation, GeometryField, PropertyGroup,
+    ResizeHandle, Selection,
+};
+use ui_helpers::*;
+
+// CSS pixels per millimeter at the standard 96 DPI screen scale.
+const BASE_SCALE: f32 = 96.0 / 25.4;
+const PAGE_MARGIN: f32 = 112.0;
+const RULER_SIZE: f32 = 24.0;
+const RULER_GAP: f32 = 4.0;
+const BAND_BADGE_WIDTH: f32 = 74.0;
+const DEFAULT_INSPECTOR_WIDTH: f32 = 360.0;
+const MIN_INSPECTOR_WIDTH: f32 = 280.0;
+const MAX_INSPECTOR_WIDTH: f32 = 560.0;
+const RESIZER_WIDTH: f32 = 7.0;
+const HANDLE_SIZE: f32 = 8.0;
+const MIN_ITEM_SIZE: f32 = 1.0;
+const TEXT_COLOR_PALETTE: [ReportColor; 10] = [
+    ReportColor::rgb(0, 0, 0),
+    ReportColor::rgb(90, 95, 105),
+    ReportColor::rgb(255, 255, 255),
+    ReportColor::rgb(210, 55, 55),
+    ReportColor::rgb(225, 125, 35),
+    ReportColor::rgb(225, 190, 35),
+    ReportColor::rgb(45, 150, 80),
+    ReportColor::rgb(30, 140, 155),
+    ReportColor::rgb(45, 105, 200),
+    ReportColor::rgb(135, 75, 175),
+];
+
+#[derive(Default)]
+struct GeometryInputs {
+    x: String,
+    y: String,
+    width: String,
+    height: String,
+}
+
+#[derive(Default)]
+struct TextInputs {
+    text: text_editor::Content,
+    font_size: String,
+    font_family: String,
+    text_color: String,
+}
+
+impl TextInputs {
+    fn sync(&mut self, item: &Item) {
+        if let Item::Text(item) = item {
+            self.text = text_editor::Content::with_text(&item.text);
+            self.font_size = format_pt(item.font_size);
+            self.font_family.clone_from(&item.font_family);
+            self.text_color = format_report_color(item.text_color);
+        } else {
+            *self = Self::default();
+        }
+    }
+}
+
+impl GeometryInputs {
+    fn sync(&mut self, item: &Item) {
+        let (x, y, width, height) = geometry_values(item);
+        self.x = format_mm(x);
+        self.y = format_mm(y);
+        self.width = format_mm(width);
+        self.height = format_mm(height);
+    }
+
+    fn value(&self, field: GeometryField) -> &str {
+        match field {
+            GeometryField::X | GeometryField::X1 => &self.x,
+            GeometryField::Y | GeometryField::Y1 => &self.y,
+            GeometryField::Width | GeometryField::X2 => &self.width,
+            GeometryField::Height | GeometryField::Y2 => &self.height,
+        }
+    }
+
+    fn set(&mut self, field: GeometryField, value: String) {
+        match field {
+            GeometryField::X | GeometryField::X1 => self.x = value,
+            GeometryField::Y | GeometryField::Y1 => self.y = value,
+            GeometryField::Width | GeometryField::X2 => self.width = value,
+            GeometryField::Height | GeometryField::Y2 => self.height = value,
+        }
+    }
+}
+
+struct DesignerApp {
+    path: Option<PathBuf>,
+    report: Report,
+    selection: Option<Selection>,
+    selected_items: Vec<Selection>,
+    active_band: Option<usize>,
+    status: String,
+    zoom: f32,
+    dirty: bool,
+    geometry_inputs: GeometryInputs,
+    text_inputs: TextInputs,
+    font_families: combo_box::State<String>,
+    font_resolver: SystemFontResolver,
+    font_names: HashMap<String, &'static str>,
+    collapsed_groups: CollapsedGroups,
+    undo_stack: Vec<Report>,
+    redo_stack: Vec<Report>,
+    canvas_interaction_active: bool,
+    properties_visible: bool,
+    properties_width: f32,
+    guides_visible: bool,
+    error_message: Option<String>,
+    settings: Option<DesignerSettings>,
+    open_menu: Option<AppMenu>,
+    about_visible: bool,
+    toolbox_visible: bool,
+    recent_reports: Vec<PathBuf>,
+    recent_reports_expanded: bool,
+    new_report_confirmation_pending: bool,
+    clipboard_item: Option<Item>,
+    context_menu_position: Option<Point>,
+    images: HashMap<String, DesignerImage>,
+}
+
+impl Default for DesignerApp {
+    fn default() -> Self {
+        let path = std::env::args().nth(1).map(PathBuf::from);
+        let mut report = path
+            .as_ref()
+            .map(|path| {
+                Report::from_file(path.to_string_lossy().as_ref())
+                    .expect("Cannot load report definition")
+            })
+            .unwrap_or_else(blank_report);
+        ensure_unique_item_names(&mut report);
+
+        let font_resolver = SystemFontResolver::new();
+        let families = font_resolver.families();
+        let font_names = families
+            .iter()
+            .map(|family| {
+                let name: &'static str = Box::leak(family.clone().into_boxed_str());
+                (family.clone(), name)
+            })
+            .collect();
+        let font_families = combo_box::State::new(families);
+        let recent_reports = path.clone().into_iter().collect();
+
+        let images = load_designer_images(&report, report_directory(path.as_deref()));
+
+        Self {
+            status: path
+                .as_ref()
+                .map(|path| format!("Loaded {}", path.display()))
+                .unwrap_or_else(|| "New blank report".to_string()),
+            path,
+            report,
+            selection: None,
+            selected_items: Vec::new(),
+            active_band: None,
+            zoom: 1.0,
+            dirty: false,
+            geometry_inputs: GeometryInputs::default(),
+            text_inputs: TextInputs::default(),
+            font_families,
+            font_resolver,
+            font_names,
+            collapsed_groups: CollapsedGroups::default(),
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
+            canvas_interaction_active: false,
+            properties_visible: true,
+            properties_width: DEFAULT_INSPECTOR_WIDTH,
+            guides_visible: true,
+            error_message: None,
+            settings: None,
+            open_menu: None,
+            about_visible: false,
+            toolbox_visible: true,
+            recent_reports,
+            recent_reports_expanded: false,
+            new_report_confirmation_pending: false,
+            clipboard_item: None,
+            context_menu_position: None,
+            images,
+        }
+    }
+}
+
+impl DesignerApp {}
+
+pub(crate) fn run() -> iced::Result {
+    iced::application(DesignerApp::default, DesignerApp::update, DesignerApp::view)
+        .title(concat!(
+            "Designer (report-rs v",
+            env!("CARGO_PKG_VERSION"),
+            ")"
+        ))
+        .window_size(Size::new(1440.0, 850.0))
+        .subscription(|_| keyboard_shortcuts())
+        .run()
+}
+
+use designer_canvas::{ColorWheel, DesignerCanvas, PropertiesResizer};
+#[cfg(test)]
+use designer_canvas::{hit_test_item, selected_descendant_path};

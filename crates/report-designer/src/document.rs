@@ -1,0 +1,171 @@
+use super::*;
+
+#[path = "document/geometry.rs"]
+mod geometry;
+#[path = "document/items.rs"]
+mod items;
+#[path = "document/layouts.rs"]
+mod layouts;
+#[path = "document/naming.rs"]
+mod naming;
+
+pub(super) use geometry::*;
+pub(super) use items::*;
+pub(super) use layouts::*;
+pub(super) use naming::*;
+
+pub(super) fn truncate(value: &str, max_chars: usize) -> String {
+    let mut chars = value.chars();
+    let shortened: String = chars.by_ref().take(max_chars).collect();
+    if chars.next().is_some() {
+        format!("{shortened}…")
+    } else {
+        shortened
+    }
+}
+
+pub(super) fn blank_report() -> Report {
+    Report {
+        name: "Untitled report".to_string(),
+        pages: vec![Page {
+            size: PageSize::A4,
+            orientation: Orientation::Portrait,
+            margins: Margins {
+                left: Mm(10.0),
+                top: Mm(10.0),
+                right: Mm(10.0),
+                bottom: Mm(10.0),
+            },
+            bands: Vec::new(),
+        }],
+    }
+}
+
+pub(super) fn same_band_kind(left: &BandKind, right: &BandKind) -> bool {
+    matches!(
+        (left, right),
+        (BandKind::ReportHeader, BandKind::ReportHeader)
+            | (BandKind::PageHeader, BandKind::PageHeader)
+            | (BandKind::Data { .. }, BandKind::Data { .. })
+            | (BandKind::PageFooter, BandKind::PageFooter)
+            | (BandKind::ReportFooter, BandKind::ReportFooter)
+    )
+}
+
+pub(super) fn report_contains_band(report: &Report, band: usize) -> bool {
+    report
+        .pages
+        .first()
+        .is_some_and(|page| band < page.bands.len())
+}
+
+pub(super) fn report_contains_selection(report: &Report, selection: Selection) -> bool {
+    item_at_selection(report, selection).is_some()
+}
+
+pub(super) fn item_layout(item: &Item) -> Option<&report_core::model::LayoutItem> {
+    match item {
+        Item::HorizontalLayout(layout) | Item::VerticalLayout(layout) => Some(layout),
+        _ => None,
+    }
+}
+
+pub(super) fn item_layout_mut(item: &mut Item) -> Option<&mut report_core::model::LayoutItem> {
+    match item {
+        Item::HorizontalLayout(layout) | Item::VerticalLayout(layout) => Some(layout),
+        _ => None,
+    }
+}
+
+pub(super) fn item_at_selection(report: &Report, selection: Selection) -> Option<&Item> {
+    let mut item = report
+        .pages
+        .first()?
+        .bands
+        .get(selection.band)?
+        .items
+        .get(selection.top_index())?;
+    for &index in selection.descendants() {
+        item = item_layout(item)?.items.get(index)?;
+    }
+    Some(item)
+}
+
+pub(super) fn item_at_selection_mut(
+    report: &mut Report,
+    selection: Selection,
+) -> Option<&mut Item> {
+    let item = report
+        .pages
+        .first_mut()?
+        .bands
+        .get_mut(selection.band)?
+        .items
+        .get_mut(selection.top_index())?;
+    item_at_descendant_mut(item, selection.descendants())
+}
+
+pub(super) fn item_at_descendant_mut<'a>(
+    item: &'a mut Item,
+    path: &[usize],
+) -> Option<&'a mut Item> {
+    let Some((&index, rest)) = path.split_first() else {
+        return Some(item);
+    };
+    let child = item_layout_mut(item)?.items.get_mut(index)?;
+    item_at_descendant_mut(child, rest)
+}
+
+pub(super) fn remove_item_at_path(items: &mut Vec<Item>, path: &[usize]) -> bool {
+    let Some((&index, rest)) = path.split_first() else {
+        return false;
+    };
+    if rest.is_empty() {
+        if index >= items.len() {
+            return false;
+        }
+        items.remove(index);
+        return true;
+    }
+    let Some(parent) = items.get_mut(index) else {
+        return false;
+    };
+    let Some(layout) = item_layout_mut(parent) else {
+        return false;
+    };
+    if !remove_item_at_path(&mut layout.items, rest) {
+        return false;
+    }
+    reflow_layout(parent);
+    true
+}
+
+pub(super) fn resize_band_height(page: &mut Page, band_index: usize, dy: f32) -> bool {
+    if band_index >= page.bands.len() || !dy.is_finite() {
+        return false;
+    }
+    let other_height: f32 = page
+        .bands
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| *index != band_index)
+        .map(|(_, band)| band.height.0)
+        .sum();
+    let item_height = page.bands[band_index]
+        .items
+        .iter()
+        .map(|item| {
+            let (_, y, _, height) = geometry_values(item);
+            if matches!(item, Item::Line(_)) {
+                y.max(height)
+            } else {
+                y + height
+            }
+        })
+        .fold(5.0_f32, f32::max);
+    let max_height = (page.printable_height().0 - other_height).max(item_height);
+    let old_height = page.bands[band_index].height.0;
+    let new_height = (old_height + dy).clamp(item_height, max_height);
+    page.bands[band_index].height = Mm(new_height);
+    (new_height - old_height).abs() > f32::EPSILON
+}
