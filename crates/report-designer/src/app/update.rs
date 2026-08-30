@@ -62,6 +62,8 @@ impl DesignerApp {
                     self.sync_geometry_inputs(selection);
                     self.canvas_interaction_active = false;
                     return self.load_selected_font();
+                } else if let Some(band) = self.active_band {
+                    self.sync_band_inputs(band);
                 }
             }
             Message::EndCanvasInteraction => self.canvas_interaction_active = false,
@@ -127,6 +129,7 @@ impl DesignerApp {
                     self.active_band = Some(band);
                     self.selection = None;
                     self.selected_items.clear();
+                    self.sync_band_inputs(band);
                     self.mark_dirty();
                 }
             }
@@ -173,6 +176,26 @@ impl DesignerApp {
                     if self.set_geometry(selection, field, value + delta) {
                         self.sync_geometry_inputs(selection);
                         self.mark_dirty();
+                    }
+                }
+            }
+            Message::ItemNameChanged(name) => {
+                let Some(selection) = self.selection else {
+                    return Task::none();
+                };
+                let previous_report = self.report.clone();
+                match rename_report_item(&mut self.report, selection, &name) {
+                    Ok(true) => {
+                        self.record_undo();
+                        if let Some(snapshot) = self.undo_stack.last_mut() {
+                            *snapshot = previous_report;
+                        }
+                        self.error_message = None;
+                        self.mark_dirty();
+                    }
+                    Ok(false) => {}
+                    Err(error) => {
+                        self.set_error(error);
                     }
                 }
             }
@@ -273,6 +296,232 @@ impl DesignerApp {
                 if self.update_selected_text(|item| item.italic = value) {
                     self.mark_dirty();
                     return self.load_selected_font();
+                }
+            }
+            Message::WordWrapChanged(value) => {
+                self.record_undo();
+                if self.update_selected_text(|item| item.word_wrap = value) {
+                    self.mark_dirty();
+                }
+            }
+            Message::AutoHeightChanged(value) => {
+                self.record_undo();
+                if self.update_selected_text(|item| item.auto_height = value) {
+                    self.mark_dirty();
+                }
+            }
+            Message::PaddingChanged(field, value) => {
+                self.text_inputs.set_padding(field, value.clone());
+                if let Ok(value) = value.parse::<f32>()
+                    && value.is_finite()
+                {
+                    let value = value.clamp(0.0, 100.0);
+                    self.record_undo();
+                    if self.update_selected_text(|item| match field {
+                        PaddingField::Left => item.padding.left = Mm(value),
+                        PaddingField::Top => item.padding.top = Mm(value),
+                        PaddingField::Right => item.padding.right = Mm(value),
+                        PaddingField::Bottom => item.padding.bottom = Mm(value),
+                    }) {
+                        self.text_inputs.set_padding(field, format_mm(value));
+                        self.mark_dirty();
+                    }
+                }
+            }
+            Message::PaddingStep(field, delta) => {
+                let value = self
+                    .text_inputs
+                    .padding(field)
+                    .parse::<f32>()
+                    .unwrap_or(0.0);
+                let value = (value + delta).clamp(0.0, 100.0);
+                self.record_undo();
+                if self.update_selected_text(|item| match field {
+                    PaddingField::Left => item.padding.left = Mm(value),
+                    PaddingField::Top => item.padding.top = Mm(value),
+                    PaddingField::Right => item.padding.right = Mm(value),
+                    PaddingField::Bottom => item.padding.bottom = Mm(value),
+                }) {
+                    self.text_inputs.set_padding(field, format_mm(value));
+                    self.mark_dirty();
+                }
+            }
+            Message::BackgroundEnabled(enabled) => {
+                self.record_undo();
+                let color =
+                    parse_report_color(&self.text_inputs.background).unwrap_or(ReportColor::WHITE);
+                if self.update_selected_text(|item| {
+                    item.background = enabled.then_some(color);
+                }) {
+                    self.text_inputs.background = if enabled {
+                        format_report_color(color)
+                    } else {
+                        String::new()
+                    };
+                    self.mark_dirty();
+                }
+            }
+            Message::BackgroundColorChanged(value) => {
+                self.text_inputs.background.clone_from(&value);
+                if let Some(color) = parse_report_color(&value) {
+                    self.record_undo();
+                    if self.update_selected_text(|item| item.background = Some(color)) {
+                        self.mark_dirty();
+                    }
+                }
+            }
+            Message::BackgroundColorSelected(color) => {
+                self.text_inputs.background = format_report_color(color);
+                self.record_undo();
+                if self.update_selected_text(|item| item.background = Some(color)) {
+                    self.mark_dirty();
+                }
+            }
+            Message::BorderEnabled(enabled) => {
+                self.record_undo();
+                let width = self
+                    .text_inputs
+                    .border_width
+                    .parse::<f32>()
+                    .unwrap_or(0.5)
+                    .clamp(0.1, 10.0);
+                if self.update_selected_text(|item| {
+                    item.border = enabled.then_some(Border {
+                        left: true,
+                        top: true,
+                        right: true,
+                        bottom: true,
+                        width,
+                    });
+                }) {
+                    self.text_inputs.border_width = format_mm(width);
+                    self.mark_dirty();
+                }
+            }
+            Message::BorderSideChanged(side, enabled) => {
+                self.record_undo();
+                if self.update_selected_text(|item| {
+                    if let Some(border) = &mut item.border {
+                        match side {
+                            BorderSide::Left => border.left = enabled,
+                            BorderSide::Top => border.top = enabled,
+                            BorderSide::Right => border.right = enabled,
+                            BorderSide::Bottom => border.bottom = enabled,
+                        }
+                    }
+                }) {
+                    self.mark_dirty();
+                }
+            }
+            Message::BorderWidthChanged(value) => {
+                self.text_inputs.border_width.clone_from(&value);
+                if let Ok(width) = value.parse::<f32>()
+                    && width.is_finite()
+                {
+                    let width = width.clamp(0.1, 10.0);
+                    self.text_inputs.border_width = format_mm(width);
+                    let enabled = self
+                        .selection
+                        .and_then(|selection| item_at_selection(&self.report, selection))
+                        .is_some_and(
+                            |item| matches!(item, Item::Text(text) if text.border.is_some()),
+                        );
+                    if enabled {
+                        self.record_undo();
+                        if self.update_selected_text(|item| {
+                            if let Some(border) = &mut item.border {
+                                border.width = width;
+                            }
+                        }) {
+                            self.mark_dirty();
+                        }
+                    }
+                }
+            }
+            Message::BorderWidthStep(delta) => {
+                let width = self.text_inputs.border_width.parse::<f32>().unwrap_or(0.5);
+                let width = (width + delta).clamp(0.1, 10.0);
+                self.text_inputs.border_width = format_mm(width);
+                let enabled = self
+                    .selection
+                    .and_then(|selection| item_at_selection(&self.report, selection))
+                    .is_some_and(|item| matches!(item, Item::Text(text) if text.border.is_some()));
+                if enabled {
+                    self.record_undo();
+                    if self.update_selected_text(|item| {
+                        if let Some(border) = &mut item.border {
+                            border.width = width;
+                        }
+                    }) {
+                        self.mark_dirty();
+                    }
+                }
+            }
+            Message::ShapeBorderWidthChanged(value) => {
+                self.shape_inputs.border_width.clone_from(&value);
+                if let Ok(width) = value.parse::<f32>()
+                    && width.is_finite()
+                {
+                    let width = width.clamp(0.1, 10.0);
+                    self.record_undo();
+                    if self.update_selected_shape(|item| item.border_width = Mm(width)) {
+                        self.shape_inputs.border_width = format_mm(width);
+                        self.mark_dirty();
+                    }
+                }
+            }
+            Message::ShapeBorderWidthStep(delta) => {
+                let width = self.shape_inputs.border_width.parse::<f32>().unwrap_or(0.5);
+                let width = (width + delta).clamp(0.1, 10.0);
+                self.record_undo();
+                if self.update_selected_shape(|item| item.border_width = Mm(width)) {
+                    self.shape_inputs.border_width = format_mm(width);
+                    self.mark_dirty();
+                }
+            }
+            Message::BandHeightChanged(value) => {
+                self.band_inputs.height.clone_from(&value);
+                if let Ok(height) = value.parse::<f32>()
+                    && height.is_finite()
+                {
+                    self.record_undo();
+                    if self.set_active_band_height(height) {
+                        if let Some(band) = self.active_band {
+                            self.sync_band_inputs(band);
+                        }
+                        self.mark_dirty();
+                    }
+                }
+            }
+            Message::BandHeightStep(delta) => {
+                let height = self.band_inputs.height.parse::<f32>().unwrap_or(5.0);
+                self.record_undo();
+                if self.set_active_band_height(height + delta) {
+                    if let Some(band) = self.active_band {
+                        self.sync_band_inputs(band);
+                    }
+                    self.mark_dirty();
+                }
+            }
+            Message::BandDataSourceChanged(source) => {
+                self.band_inputs.data_source.clone_from(&source);
+                self.record_undo();
+                if self.update_active_data_source(source) {
+                    self.mark_dirty();
+                }
+            }
+            Message::EqualizeLayoutChildren => {
+                let Some(selection) = self.selection else {
+                    return Task::none();
+                };
+                self.record_undo();
+                let changed = item_at_selection_mut(&mut self.report, selection)
+                    .is_some_and(equalize_layout_children);
+                if changed {
+                    self.sync_geometry_inputs(selection);
+                    self.mark_dirty();
+                } else {
+                    self.undo_stack.pop();
                 }
             }
             Message::TextColorChanged(value) => {

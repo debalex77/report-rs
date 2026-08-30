@@ -109,6 +109,31 @@ pub(crate) fn collect_report_item_names(report: &Report) -> HashSet<String> {
     names
 }
 
+pub(crate) fn rename_report_item(
+    report: &mut Report,
+    selection: Selection,
+    name: &str,
+) -> Result<bool, &'static str> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("Item name cannot be empty");
+    }
+    let Some(current) = item_at_selection(report, selection).map(item_name_storage) else {
+        return Err("The selected item no longer exists");
+    };
+    if current == name {
+        return Ok(false);
+    }
+    if collect_report_item_names(report).contains(name) {
+        return Err("Another item already uses this name");
+    }
+    let Some(item) = item_at_selection_mut(report, selection) else {
+        return Err("The selected item no longer exists");
+    };
+    *item_name_mut(item) = name.to_string();
+    Ok(true)
+}
+
 pub(crate) fn collect_item_names(items: &[Item], names: &mut HashSet<String>) {
     for item in items {
         let name = item_name_storage(item);

@@ -77,9 +77,11 @@ impl DesignerApp {
             height: Mm(30.0),
             items: Vec::new(),
         });
+        let band_index = page.bands.len() - 1;
         self.selection = None;
         self.selected_items.clear();
-        self.active_band = Some(page.bands.len() - 1);
+        self.active_band = Some(band_index);
+        self.sync_band_inputs(band_index);
         self.mark_dirty();
     }
 

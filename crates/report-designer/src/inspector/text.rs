@@ -12,14 +12,34 @@ pub(super) fn append<'a>(
             app.collapsed_groups.is_collapsed(PropertyGroup::TextValue),
         ));
         if !app.collapsed_groups.is_collapsed(PropertyGroup::TextValue) {
-            content = content.push(
-                text_editor(&app.text_inputs.text)
-                    .placeholder("Text / Value")
-                    .size(13)
-                    .padding(8)
-                    .height(110)
-                    .on_action(Message::TextEdited),
-            );
+            content = content
+                .push(
+                    text_editor(&app.text_inputs.text)
+                        .placeholder("Text / Value")
+                        .size(12)
+                        .padding(6)
+                        .height(84)
+                        .on_action(Message::TextEdited),
+                )
+                .push(
+                    row![
+                        button(text("Word wrap").size(11))
+                            .style(if text_item.word_wrap {
+                                button::primary
+                            } else {
+                                button::secondary
+                            })
+                            .on_press(Message::WordWrapChanged(!text_item.word_wrap)),
+                        button(text("Auto height").size(11))
+                            .style(if text_item.auto_height {
+                                button::primary
+                            } else {
+                                button::secondary
+                            })
+                            .on_press(Message::AutoHeightChanged(!text_item.auto_height)),
+                    ]
+                    .spacing(5),
+                );
         }
 
         content = content.push(property_group_header(
@@ -31,12 +51,12 @@ pub(super) fn append<'a>(
             content = content
                 .push(
                     row![
-                        text("Size").size(12).width(52),
+                        text("Size").size(11).width(46),
                         spin_button("−", Message::FontSizeStep(-1.0)),
                         text_input("pt", &app.text_inputs.font_size)
-                            .width(90)
-                            .size(13)
-                            .padding(6)
+                            .width(78)
+                            .size(12)
+                            .padding(4)
                             .on_input(Message::FontSizeChanged),
                         spin_button("+", Message::FontSizeStep(1.0)),
                     ]
@@ -50,8 +70,8 @@ pub(super) fn append<'a>(
                         Some(&app.text_inputs.font_family),
                         Message::FontFamilyChanged,
                     )
-                    .size(13)
-                    .padding(6)
+                    .size(12)
+                    .padding(4)
                     .on_input(Message::FontFamilyChanged),
                 )
                 .push(
@@ -97,19 +117,20 @@ pub(super) fn append<'a>(
             content = content
                 .push(
                     text_input("#RRGGBB", &app.text_inputs.text_color)
-                        .size(13)
-                        .padding(6)
+                        .size(12)
+                        .padding(4)
                         .on_input(Message::TextColorChanged),
                 )
                 .push(iced::widget::column![palette_top, palette_bottom].spacing(4))
-                .push(text("Custom color").size(12))
+                .push(text("Custom color").size(11))
                 .push(
                     container(
                         Canvas::new(ColorWheel {
                             selected: text_item.text_color,
+                            target: ColorTarget::Text,
                         })
-                        .width(170)
-                        .height(170),
+                        .width(140)
+                        .height(140),
                     )
                     .width(Fill)
                     .center_x(Fill),
@@ -123,7 +144,7 @@ pub(super) fn append<'a>(
         ));
         if !app.collapsed_groups.is_collapsed(PropertyGroup::Alignment) {
             content = content
-                .push(text("Horizontal").size(12))
+                .push(text("Horizontal").size(11))
                 .push(
                     row![
                         alignment_button(
@@ -144,7 +165,7 @@ pub(super) fn append<'a>(
                     ]
                     .spacing(4),
                 )
-                .push(text("Vertical").size(12))
+                .push(text("Vertical").size(11))
                 .push(
                     row![
                         alignment_button(

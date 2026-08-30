@@ -56,7 +56,7 @@ impl TextLayout {
     ///
     /// The wrapping pass depends only on measurements supplied by `measurer`.
     /// It does not shape or draw glyphs; renderers consume the resulting lines
-    /// later. A word wider than `max_width` remains intact on its own line.
+    /// later. A word wider than `max_width` is split at character boundaries.
     pub fn wrap<M: TextMeasurer>(
         text: &str,
         font: &FontSpec,
@@ -92,9 +92,26 @@ impl TextLayout {
                     });
                 }
 
-                // Long words are not split at character boundaries. They may
-                // therefore be wider than max_width in the resulting layout.
-                current_line = word.to_string();
+                if measurer.measure_width(word, font) <= max_width {
+                    current_line = word.to_string();
+                } else {
+                    // Keep long identifiers, URLs and generated values inside
+                    // the item even when they contain no whitespace.
+                    let mut chunk = String::new();
+                    for character in word.chars() {
+                        let mut candidate = chunk.clone();
+                        candidate.push(character);
+                        if !chunk.is_empty() && measurer.measure_width(&candidate, font) > max_width
+                        {
+                            let width = measurer.measure_width(&chunk, font);
+                            lines.push(TextLine { text: chunk, width });
+                            chunk = character.to_string();
+                        } else {
+                            chunk = candidate;
+                        }
+                    }
+                    current_line = chunk;
+                }
             }
         }
 
@@ -202,6 +219,29 @@ mod tests {
         approx_eq(layout.line_height, expected_line_height, 0.001);
 
         approx_eq(layout.height, expected_height, 0.001);
+    }
+
+    #[test]
+    fn wrap_splits_a_word_wider_than_the_available_width() {
+        let measurer = ApproxTextMeasurer;
+        let font = FontSpec::default();
+        let layout = TextLayout::wrap(
+            "Responsabil_sdfhjbksdfhhsgdffiaghfkhgqashg",
+            &font,
+            15.0,
+            &measurer,
+        );
+
+        assert!(layout.lines.len() > 1);
+        assert!(layout.lines.iter().all(|line| line.width <= 15.001));
+        assert_eq!(
+            layout
+                .lines
+                .iter()
+                .map(|line| line.text.as_str())
+                .collect::<String>(),
+            "Responsabil_sdfhjbksdfhhsgdffiaghfkhgqashg"
+        );
     }
 
     #[test]

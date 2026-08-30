@@ -111,6 +111,160 @@ fn text_color_hex_round_trip() {
 }
 
 #[test]
+fn text_layout_options_json_round_trip() {
+    let mut report = blank_report();
+    let mut item = new_text_item("DejaVu Sans".to_string());
+    let Item::Text(text) = &mut item else {
+        unreachable!();
+    };
+    text.word_wrap = true;
+    text.auto_height = true;
+    text.padding = Padding {
+        left: Mm(1.0),
+        top: Mm(2.0),
+        right: Mm(3.0),
+        bottom: Mm(4.0),
+    };
+    text.background = Some(ReportColor::rgb(225, 190, 35));
+    text.border = Some(Border {
+        left: true,
+        top: false,
+        right: true,
+        bottom: true,
+        width: 0.75,
+    });
+    report.pages[0].bands.push(Band {
+        kind: BandKind::ReportHeader,
+        height: Mm(20.0),
+        items: vec![item],
+    });
+
+    let path = std::env::temp_dir().join(format!(
+        "report-rs-text-options-{}.json",
+        std::process::id()
+    ));
+    report
+        .save_to_file(path.to_string_lossy().as_ref())
+        .expect("report must serialize");
+    let decoded =
+        Report::from_file(path.to_string_lossy().as_ref()).expect("report must deserialize");
+    std::fs::remove_file(path).expect("temporary report must be removed");
+    let Item::Text(text) = &decoded.pages[0].bands[0].items[0] else {
+        unreachable!();
+    };
+
+    assert!(text.word_wrap);
+    assert!(text.auto_height);
+    assert_eq!(text.padding.left, Mm(1.0));
+    assert_eq!(text.padding.top, Mm(2.0));
+    assert_eq!(text.padding.right, Mm(3.0));
+    assert_eq!(text.padding.bottom, Mm(4.0));
+    assert_eq!(text.background, Some(ReportColor::rgb(225, 190, 35)));
+    let border = text.border.as_ref().expect("border must round-trip");
+    assert!(border.left);
+    assert!(!border.top);
+    assert!(border.right);
+    assert!(border.bottom);
+    assert_eq!(border.width, 0.75);
+}
+
+#[test]
+fn shape_border_width_json_round_trip() {
+    let mut report = blank_report();
+    let mut shape = new_shape_item();
+    let Item::Rectangle(rectangle) = &mut shape else {
+        unreachable!();
+    };
+    rectangle.border_width = Mm(2.25);
+    report.pages[0].bands.push(Band {
+        kind: BandKind::ReportHeader,
+        height: Mm(30.0),
+        items: vec![shape],
+    });
+    let path = std::env::temp_dir().join(format!(
+        "report-rs-shape-options-{}.json",
+        std::process::id()
+    ));
+    report
+        .save_to_file(path.to_string_lossy().as_ref())
+        .expect("report must serialize");
+    let decoded =
+        Report::from_file(path.to_string_lossy().as_ref()).expect("report must deserialize");
+    std::fs::remove_file(path).expect("temporary report must be removed");
+
+    let Item::Rectangle(rectangle) = &decoded.pages[0].bands[0].items[0] else {
+        unreachable!();
+    };
+    assert_eq!(rectangle.border_width, Mm(2.25));
+}
+
+#[test]
+fn auto_height_propagates_through_layout_to_repeating_bands() {
+    fn layout_with_wrapped_text() -> Item {
+        let mut first = new_text_item("DejaVu Sans".to_string());
+        set_item_frame(&mut first, 0.0, 0.0, 30.0, 5.0);
+        let mut second = new_text_item("DejaVu Sans".to_string());
+        set_item_frame(&mut second, 30.0, 0.0, 30.0, 5.0);
+        let mut text = new_text_item("DejaVu Sans".to_string());
+        set_item_frame(&mut text, 60.0, 0.0, 30.0, 5.0);
+        let Item::Text(text_item) = &mut text else {
+            unreachable!();
+        };
+        text_item.width = Mm(30.0);
+        text_item.height = Mm(5.0);
+        text_item.text = "Responsabil_sdfhjbksdfhhsgdffiaghfkhgqashg".to_string();
+        text_item.word_wrap = true;
+        text_item.auto_height = true;
+
+        Item::HorizontalLayout(LayoutItem {
+            name: "horizontalLayout1".to_string(),
+            x: Mm(0.0),
+            y: Mm(0.0),
+            width: Mm(90.0),
+            height: Mm(5.0),
+            items: vec![first, second, text],
+        })
+    }
+
+    let mut report = blank_report();
+    report.pages[0].bands = vec![
+        Band {
+            kind: BandKind::PageHeader,
+            height: Mm(5.0),
+            items: vec![layout_with_wrapped_text()],
+        },
+        Band {
+            kind: BandKind::Data {
+                source: "rows".to_string(),
+            },
+            height: Mm(5.0),
+            items: vec![layout_with_wrapped_text()],
+        },
+        Band {
+            kind: BandKind::PageFooter,
+            height: Mm(5.0),
+            items: vec![layout_with_wrapped_text()],
+        },
+    ];
+
+    assert!(propagate_auto_heights(&mut report));
+    for band in &report.pages[0].bands {
+        assert!(band.height.0 > 5.0);
+        let Item::HorizontalLayout(layout) = &band.items[0] else {
+            unreachable!();
+        };
+        assert!(layout.height.0 > 5.0);
+        assert_eq!(band.height, layout.height);
+        assert!(
+            layout
+                .items
+                .iter()
+                .all(|item| normalized_geometry(item).3 == layout.height.0)
+        );
+    }
+}
+
+#[test]
 fn hsv_color_conversion_uses_expected_primary_colors() {
     assert_eq!(
         hsv_to_report_color(0.0, 1.0, 1.0),
@@ -195,6 +349,38 @@ fn band_resize_changes_only_height_and_stays_inside_printable_page() {
 }
 
 #[test]
+fn band_resize_does_not_shrink_below_its_items() {
+    let mut report = blank_report();
+    let mut item = new_text_item("DejaVu Sans".to_string());
+    set_item_frame(&mut item, 0.0, 18.0, 40.0, 12.0);
+    report.pages[0].bands.push(Band {
+        kind: BandKind::PageHeader,
+        height: Mm(40.0),
+        items: vec![item],
+    });
+
+    assert!(resize_band_height(&mut report.pages[0], 0, -100.0));
+    assert_eq!(report.pages[0].bands[0].height, Mm(30.0));
+}
+
+#[test]
+fn band_inputs_sync_data_source_and_height() {
+    let band = Band {
+        kind: BandKind::Data {
+            source: "orders".to_string(),
+        },
+        height: Mm(27.5),
+        items: Vec::new(),
+    };
+    let mut inputs = BandInputs::default();
+
+    inputs.sync(&band);
+
+    assert_eq!(inputs.height, "27.50");
+    assert_eq!(inputs.data_source, "orders");
+}
+
+#[test]
 fn history_selection_is_invalid_after_selected_item_disappears() {
     let mut report = blank_report();
     report.pages[0].bands.push(Band {
@@ -219,6 +405,101 @@ fn inserted_items_receive_sequential_unique_names() {
 
     assert_eq!(item_name(&first), "itemText1");
     assert_eq!(item_name(&second), "itemText2");
+}
+
+#[test]
+fn item_name_edit_requires_a_nonempty_unique_name() {
+    let mut report = blank_report();
+    let mut first = new_text_item("DejaVu Sans".to_string());
+    let mut second = new_text_item("DejaVu Sans".to_string());
+    *item_name_mut(&mut first) = "itemText1".to_string();
+    *item_name_mut(&mut second) = "itemText2".to_string();
+    report.pages[0].bands.push(Band {
+        kind: BandKind::ReportHeader,
+        height: Mm(30.0),
+        items: vec![first, second],
+    });
+    let selection = Selection::top_level(0, 0);
+
+    assert_eq!(
+        rename_report_item(&mut report, selection, "reportTitle"),
+        Ok(true)
+    );
+    assert_eq!(
+        item_name(item_at_selection(&report, selection).unwrap()),
+        "reportTitle"
+    );
+    assert_eq!(
+        rename_report_item(&mut report, selection, "itemText2"),
+        Err("Another item already uses this name")
+    );
+    assert_eq!(
+        rename_report_item(&mut report, selection, "   "),
+        Err("Item name cannot be empty")
+    );
+}
+
+#[test]
+fn equalize_nested_layout_children_preserves_the_nested_structure() {
+    let mut inner = new_layout_item(true);
+    let Item::HorizontalLayout(inner_layout) = &mut inner else {
+        unreachable!();
+    };
+    inner_layout.width = Mm(60.0);
+    inner_layout.height = Mm(10.0);
+    inner_layout.items = vec![
+        new_text_item("DejaVu Sans".to_string()),
+        new_text_item("DejaVu Sans".to_string()),
+    ];
+    arrange_layout_children(&mut inner_layout.items, true, 60.0, 10.0);
+
+    let mut outer = Item::VerticalLayout(LayoutItem {
+        name: "verticalLayout1".to_string(),
+        x: Mm(0.0),
+        y: Mm(0.0),
+        width: Mm(60.0),
+        height: Mm(40.0),
+        items: vec![inner, new_text_item("DejaVu Sans".to_string())],
+    });
+    set_item_frame(
+        item_layout_mut(&mut outer)
+            .unwrap()
+            .items
+            .get_mut(0)
+            .unwrap(),
+        0.0,
+        0.0,
+        60.0,
+        10.0,
+    );
+    set_item_frame(
+        item_layout_mut(&mut outer)
+            .unwrap()
+            .items
+            .get_mut(1)
+            .unwrap(),
+        0.0,
+        10.0,
+        60.0,
+        30.0,
+    );
+
+    assert!(equalize_layout_children(&mut outer));
+    let Item::VerticalLayout(outer) = outer else {
+        unreachable!();
+    };
+    assert_eq!(normalized_geometry(&outer.items[0]).3, 20.0);
+    assert_eq!(normalized_geometry(&outer.items[1]).3, 20.0);
+    let Item::HorizontalLayout(inner) = &outer.items[0] else {
+        unreachable!();
+    };
+    assert_eq!(inner.items.len(), 2);
+    assert!(
+        inner
+            .items
+            .iter()
+            .all(|child| normalized_geometry(child).3 == 20.0)
+    );
 }
 
 #[test]

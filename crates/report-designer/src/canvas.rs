@@ -26,6 +26,13 @@ pub(crate) struct DesignerCanvas<'a> {
 
 pub(crate) struct ColorWheel {
     pub(crate) selected: ReportColor,
+    pub(crate) target: ColorTarget,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum ColorTarget {
+    Text,
+    Background,
 }
 
 pub(crate) struct PropertiesResizer;
@@ -123,12 +130,12 @@ impl canvas::Program<Message> for ColorWheel {
             if distance <= radius {
                 let hue = dy.atan2(dx).to_degrees().rem_euclid(360.0);
                 let saturation = (distance / radius).clamp(0.0, 1.0);
-                return Some(
-                    canvas::Action::publish(Message::TextColorSelected(hsv_to_report_color(
-                        hue, saturation, 1.0,
-                    )))
-                    .and_capture(),
-                );
+                let color = hsv_to_report_color(hue, saturation, 1.0);
+                let message = match self.target {
+                    ColorTarget::Text => Message::TextColorSelected(color),
+                    ColorTarget::Background => Message::BackgroundColorSelected(color),
+                };
+                return Some(canvas::Action::publish(message).and_capture());
             }
         }
 

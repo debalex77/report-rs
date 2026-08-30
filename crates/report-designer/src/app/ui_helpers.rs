@@ -247,9 +247,9 @@ pub(super) fn spin_button(
     label: &'static str,
     message: Message,
 ) -> iced::widget::Button<'static, Message> {
-    button(container(text(label).size(14)).center(Fill))
-        .width(28)
-        .height(28)
+    button(container(text(label).size(12)).center(Fill))
+        .width(24)
+        .height(24)
         .padding(0)
         .style(common::style_button(4.0))
         .on_press(message)
@@ -261,9 +261,9 @@ pub(super) fn property_group_header(
     collapsed: bool,
 ) -> Element<'static, Message> {
     let marker = if collapsed { "▶" } else { "▼" };
-    button(text(format!("{marker}  {label}")).size(14))
+    button(text(format!("{marker}  {label}")).size(12))
         .width(Fill)
-        .padding([5, 8])
+        .padding([3, 6])
         .on_press(Message::ToggleGroup(group))
         .into()
 }

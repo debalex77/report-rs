@@ -16,8 +16,8 @@ use report_core::font::FontSpec;
 use report_core::font_resolver::SystemFontResolver;
 use report_core::image_layout::calculate_image_placement;
 use report_core::model::{
-    Band, BandKind, Color as ReportColor, HorizontalAlign, ImageFit, ImageItem, Item, LayoutItem,
-    Margins, Mm, Orientation, Padding, Page, PageSize, RectangleItem, Report, TextItem,
+    Band, BandKind, Border, Color as ReportColor, HorizontalAlign, ImageFit, ImageItem, Item,
+    LayoutItem, Margins, Mm, Orientation, Padding, Page, PageSize, RectangleItem, Report, TextItem,
     VerticalAlign,
 };
 
@@ -72,8 +72,8 @@ use message::Message;
 use settings::{DesignerSettings, MarginField, page_font_family};
 use shortcuts::keyboard_shortcuts;
 use state::{
-    AppMenu, CollapsedGroups, DesignerTool, DragOperation, GeometryField, PropertyGroup,
-    ResizeHandle, Selection,
+    AppMenu, BorderSide, CollapsedGroups, DesignerTool, DragOperation, GeometryField, PaddingField,
+    PropertyGroup, ResizeHandle, Selection,
 };
 use ui_helpers::*;
 
@@ -83,9 +83,9 @@ const PAGE_MARGIN: f32 = 112.0;
 const RULER_SIZE: f32 = 24.0;
 const RULER_GAP: f32 = 4.0;
 const BAND_BADGE_WIDTH: f32 = 74.0;
-const DEFAULT_INSPECTOR_WIDTH: f32 = 360.0;
-const MIN_INSPECTOR_WIDTH: f32 = 280.0;
-const MAX_INSPECTOR_WIDTH: f32 = 560.0;
+const DEFAULT_INSPECTOR_WIDTH: f32 = 330.0;
+const MIN_INSPECTOR_WIDTH: f32 = 250.0;
+const MAX_INSPECTOR_WIDTH: f32 = 500.0;
 const RESIZER_WIDTH: f32 = 7.0;
 const HANDLE_SIZE: f32 = 8.0;
 const MIN_ITEM_SIZE: f32 = 1.0;
@@ -116,6 +116,43 @@ struct TextInputs {
     font_size: String,
     font_family: String,
     text_color: String,
+    padding_left: String,
+    padding_top: String,
+    padding_right: String,
+    padding_bottom: String,
+    background: String,
+    border_width: String,
+}
+
+#[derive(Default)]
+struct ShapeInputs {
+    border_width: String,
+}
+
+#[derive(Default)]
+struct BandInputs {
+    height: String,
+    data_source: String,
+}
+
+impl BandInputs {
+    fn sync(&mut self, band: &Band) {
+        self.height = format_mm(band.height.0);
+        self.data_source = match &band.kind {
+            BandKind::Data { source } => source.clone(),
+            _ => String::new(),
+        };
+    }
+}
+
+impl ShapeInputs {
+    fn sync(&mut self, item: &Item) {
+        if let Item::Rectangle(item) = item {
+            self.border_width = format_mm(item.border_width.0);
+        } else {
+            *self = Self::default();
+        }
+    }
 }
 
 impl TextInputs {
@@ -125,8 +162,36 @@ impl TextInputs {
             self.font_size = format_pt(item.font_size);
             self.font_family.clone_from(&item.font_family);
             self.text_color = format_report_color(item.text_color);
+            self.padding_left = format_mm(item.padding.left.0);
+            self.padding_top = format_mm(item.padding.top.0);
+            self.padding_right = format_mm(item.padding.right.0);
+            self.padding_bottom = format_mm(item.padding.bottom.0);
+            self.background = item.background.map(format_report_color).unwrap_or_default();
+            self.border_width = item
+                .border
+                .as_ref()
+                .map(|border| format_mm(border.width))
+                .unwrap_or_else(|| format_mm(0.5));
         } else {
             *self = Self::default();
+        }
+    }
+
+    fn padding(&self, field: PaddingField) -> &str {
+        match field {
+            PaddingField::Left => &self.padding_left,
+            PaddingField::Top => &self.padding_top,
+            PaddingField::Right => &self.padding_right,
+            PaddingField::Bottom => &self.padding_bottom,
+        }
+    }
+
+    fn set_padding(&mut self, field: PaddingField, value: String) {
+        match field {
+            PaddingField::Left => self.padding_left = value,
+            PaddingField::Top => self.padding_top = value,
+            PaddingField::Right => self.padding_right = value,
+            PaddingField::Bottom => self.padding_bottom = value,
         }
     }
 }
@@ -170,6 +235,8 @@ struct DesignerApp {
     dirty: bool,
     geometry_inputs: GeometryInputs,
     text_inputs: TextInputs,
+    shape_inputs: ShapeInputs,
+    band_inputs: BandInputs,
     font_families: combo_box::State<String>,
     font_resolver: SystemFontResolver,
     font_names: HashMap<String, &'static str>,
@@ -233,6 +300,8 @@ impl Default for DesignerApp {
             dirty: false,
             geometry_inputs: GeometryInputs::default(),
             text_inputs: TextInputs::default(),
+            shape_inputs: ShapeInputs::default(),
+            band_inputs: BandInputs::default(),
             font_families,
             font_resolver,
             font_names,
@@ -272,6 +341,6 @@ pub(crate) fn run() -> iced::Result {
         .run()
 }
 
-use designer_canvas::{ColorWheel, DesignerCanvas, PropertiesResizer};
+use designer_canvas::{ColorTarget, ColorWheel, DesignerCanvas, PropertiesResizer};
 #[cfg(test)]
 use designer_canvas::{hit_test_item, selected_descendant_path};

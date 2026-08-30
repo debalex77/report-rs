@@ -17,19 +17,19 @@ pub(super) fn append<'a>(
         {
             content = content.push(
                 text("Geometry is controlled by the parent layout.")
-                    .size(12)
+                    .size(11)
                     .color(Color::from_rgb8(150, 155, 165)),
             );
         } else {
             for (label, field) in geometry_field_specs(item) {
                 content = content.push(
                     row![
-                        text(label).size(12).width(52),
+                        text(label).size(11).width(46),
                         spin_button("−", Message::GeometryStep(field, -0.10)),
                         text_input("mm", app.geometry_inputs.value(field))
-                            .width(90)
-                            .size(13)
-                            .padding(6)
+                            .width(78)
+                            .size(12)
+                            .padding(4)
                             .on_input(move |value| Message::GeometryChanged(field, value)),
                         spin_button("+", Message::GeometryStep(field, 0.10)),
                     ]

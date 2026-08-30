@@ -1,5 +1,7 @@
 use super::*;
 
+#[path = "document/auto_height.rs"]
+mod auto_height;
 #[path = "document/geometry.rs"]
 mod geometry;
 #[path = "document/items.rs"]
@@ -9,6 +11,7 @@ mod layouts;
 #[path = "document/naming.rs"]
 mod naming;
 
+pub(super) use auto_height::*;
 pub(super) use geometry::*;
 pub(super) use items::*;
 pub(super) use layouts::*;

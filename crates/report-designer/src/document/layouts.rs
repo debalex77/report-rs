@@ -1,5 +1,23 @@
 use super::*;
 
+pub(crate) fn equalize_layout_children(item: &mut Item) -> bool {
+    let (layout, horizontal) = match item {
+        Item::HorizontalLayout(layout) => (layout, true),
+        Item::VerticalLayout(layout) => (layout, false),
+        _ => return false,
+    };
+    if layout.items.is_empty() {
+        return false;
+    }
+    arrange_layout_children(
+        &mut layout.items,
+        horizontal,
+        layout.width.0,
+        layout.height.0,
+    );
+    true
+}
+
 pub(crate) fn arrange_layout_children(
     items: &mut [Item],
     horizontal: bool,

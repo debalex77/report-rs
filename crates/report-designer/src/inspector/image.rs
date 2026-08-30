@@ -13,33 +13,33 @@ pub(super) fn append<'a>(
         ));
         if !app.collapsed_groups.is_collapsed(PropertyGroup::Image) {
             content = content
-                .push(text("Source").size(12))
+                .push(text("Source").size(11))
                 .push(
                     row![
                         text_input("Image path", &image_item.source)
-                            .size(13)
-                            .padding(6)
+                            .size(12)
+                            .padding(4)
                             .on_input(Message::ImageSourceChanged),
-                        button(text("Browse…").size(12))
-                            .height(30)
-                            .padding([5, 8])
+                        button(text("Browse…").size(11))
+                            .height(26)
+                            .padding([3, 6])
                             .style(common::style_button(5.0))
                             .on_press(Message::BrowseImageSource),
                     ]
                     .spacing(5)
                     .align_y(iced::Alignment::Center),
                 )
-                .push(text("Fit").size(12))
+                .push(text("Fit").size(11))
                 .push(
                     row![
-                        button(text("Contain").size(12))
+                        button(text("Contain").size(11))
                             .style(if image_item.fit == ImageFit::Contain {
                                 button::primary
                             } else {
                                 button::secondary
                             })
                             .on_press(Message::ImageFitChanged(ImageFit::Contain)),
-                        button(text("Stretch").size(12))
+                        button(text("Stretch").size(11))
                             .style(if image_item.fit == ImageFit::Stretch {
                                 button::primary
                             } else {

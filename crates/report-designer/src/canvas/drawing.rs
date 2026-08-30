@@ -33,40 +33,94 @@ pub(super) fn draw_item(
             stroke,
         ),
         Item::Text(text_item) => {
-            if let Some(rect) = item_bounds(item, offset_x, offset_y, scale) {
+            if let Some(mut rect) = item_bounds(item, offset_x, offset_y, scale) {
+                rect.height = text_display_height(text_item) * scale;
                 let path = Path::rectangle(rect.position(), rect.size());
+                if let Some(background) = text_item.background {
+                    frame.fill(&path, report_color_to_iced(background));
+                }
                 frame.fill(&path, Color::from_rgba8(30, 140, 155, 0.06));
+                if let Some(border) = &text_item.border {
+                    let border_stroke = canvas::Stroke {
+                        width: (border.width * scale).max(1.0),
+                        style: canvas::Style::Solid(Color::BLACK),
+                        ..Default::default()
+                    };
+                    let left = rect.x;
+                    let top = rect.y;
+                    let right = rect.x + rect.width;
+                    let bottom = rect.y + rect.height;
+                    if border.left {
+                        frame.stroke(
+                            &Path::line(Point::new(left, top), Point::new(left, bottom)),
+                            border_stroke,
+                        );
+                    }
+                    if border.top {
+                        frame.stroke(
+                            &Path::line(Point::new(left, top), Point::new(right, top)),
+                            border_stroke,
+                        );
+                    }
+                    if border.right {
+                        frame.stroke(
+                            &Path::line(Point::new(right, top), Point::new(right, bottom)),
+                            border_stroke,
+                        );
+                    }
+                    if border.bottom {
+                        frame.stroke(
+                            &Path::line(Point::new(left, bottom), Point::new(right, bottom)),
+                            border_stroke,
+                        );
+                    }
+                }
                 frame.stroke(&path, stroke);
 
                 if rect.width >= 50.0 && rect.height >= 14.0 {
                     let (text_x, align_x) = match text_item.horizontal_align {
-                        HorizontalAlign::Left => {
-                            (rect.x + 4.0, iced::alignment::Horizontal::Left.into())
-                        }
+                        HorizontalAlign::Left => (
+                            rect.x + text_item.padding.left.0 * scale,
+                            iced::alignment::Horizontal::Left.into(),
+                        ),
                         HorizontalAlign::Center => (
                             rect.x + rect.width / 2.0,
                             iced::alignment::Horizontal::Center.into(),
                         ),
                         HorizontalAlign::Right => (
-                            rect.x + rect.width - 4.0,
+                            rect.x + rect.width - text_item.padding.right.0 * scale,
                             iced::alignment::Horizontal::Right.into(),
                         ),
                     };
                     let (text_y, align_y) = match text_item.vertical_align {
-                        VerticalAlign::Top => (rect.y + 2.0, iced::alignment::Vertical::Top),
+                        VerticalAlign::Top => (
+                            rect.y + text_item.padding.top.0 * scale,
+                            iced::alignment::Vertical::Top,
+                        ),
                         VerticalAlign::Center => (
                             rect.y + rect.height / 2.0,
                             iced::alignment::Vertical::Center,
                         ),
                         VerticalAlign::Bottom => (
-                            rect.y + rect.height - 2.0,
+                            rect.y + rect.height - text_item.padding.bottom.0 * scale,
                             iced::alignment::Vertical::Bottom,
                         ),
                     };
+                    let layout = designer_text_layout(text_item);
+                    let content = layout
+                        .lines
+                        .iter()
+                        .map(|line| line.text.as_str())
+                        .collect::<Vec<_>>()
+                        .join("\n");
                     frame.fill_text(canvas::Text {
-                        content: truncate(&text_item.text, 34),
+                        content,
                         position: Point::new(text_x, text_y),
-                        max_width: (rect.width - 8.0).max(0.0),
+                        // Wrapping is already performed by designer_text_layout.
+                        // A finite max_width would make iced wrap the generated
+                        // lines again using different font metrics, breaking the
+                        // AutoHeight calculation and the following band offsets.
+                        max_width: f32::INFINITY,
                         color: report_color_to_iced(text_item.text_color),
                         size: iced::Pixels(
                             text_item.font_size * (96.0 / 72.0) * (scale / BASE_SCALE),
@@ -120,61 +174,69 @@ pub(super) fn draw_item(
                 frame.stroke(&Path::rectangle(rect.position(), rect.size()), stroke);
             }
         }
-        Item::Rectangle(_) | Item::HorizontalLayout(_) | Item::VerticalLayout(_) => {
+        Item::Rectangle(rectangle_item) => {
+            if let Some(rect) = item_bounds(item, offset_x, offset_y, scale) {
+                frame.stroke(
+                    &Path::rectangle(rect.position(), rect.size()),
+                    canvas::Stroke {
+                        width: (rectangle_item.border_width.0 * scale).max(1.0),
+                        style: canvas::Style::Solid(Color::BLACK),
+                        ..Default::default()
+                    },
+                );
+                if selected {
+                    frame.stroke(&Path::rectangle(rect.position(), rect.size()), stroke);
+                }
+            }
+        }
+        Item::HorizontalLayout(_) | Item::VerticalLayout(_) => {
             if let Some(rect) = item_bounds(item, offset_x, offset_y, scale) {
                 frame.stroke(&Path::rectangle(rect.position(), rect.size()), stroke);
-                if let Item::HorizontalLayout(_) | Item::VerticalLayout(_) = item {
-                    if let Some(label_bounds) =
-                        layout_label_bounds(item, rect, nested_in_horizontal)
-                    {
-                        let label_background = if selected {
-                            Color::from_rgba8(225, 80, 55, 0.24)
-                        } else {
-                            Color::from_rgba8(30, 140, 155, 0.16)
-                        };
-                        let label_path = Path::rounded_rectangle(
-                            label_bounds.position(),
-                            label_bounds.size(),
-                            iced::border::radius(4),
-                        );
-                        frame.fill(&label_path, label_background);
-                        frame.stroke(&label_path, stroke);
-                        frame.fill_text(canvas::Text {
-                            content: item_name(item).to_string(),
-                            position: Point::new(label_bounds.x + 6.0, label_bounds.y + 9.0),
-                            color,
-                            size: iced::Pixels(10.0),
-                            align_y: iced::alignment::Vertical::Center,
-                            ..Default::default()
-                        });
-                    }
-                    let children = match item {
-                        Item::HorizontalLayout(layout) | Item::VerticalLayout(layout) => {
-                            &layout.items
-                        }
-                        _ => unreachable!(),
+                if let Some(label_bounds) = layout_label_bounds(item, rect, nested_in_horizontal) {
+                    let label_background = if selected {
+                        Color::from_rgba8(225, 80, 55, 0.24)
+                    } else {
+                        Color::from_rgba8(30, 140, 155, 0.16)
                     };
-                    let children_are_in_horizontal = matches!(item, Item::HorizontalLayout(_));
-                    for (index, child) in children.iter().enumerate() {
-                        draw_item(
-                            frame,
-                            child,
-                            rect.x,
-                            rect.y,
-                            scale,
-                            font_names,
-                            images,
-                            selected_path.is_some_and(|path| {
-                                path.first() == Some(&index) && path.len() == 1
-                            }),
-                            selected_path.and_then(|path| selected_descendant_path(path, index)),
-                            false,
-                            children_are_in_horizontal,
-                        );
-                    }
-                    if selected {
-                        draw_layout_dividers(frame, item, rect, scale);
-                    }
+                    let label_path = Path::rounded_rectangle(
+                        label_bounds.position(),
+                        label_bounds.size(),
+                        iced::border::radius(4),
+                    );
+                    frame.fill(&label_path, label_background);
+                    frame.stroke(&label_path, stroke);
+                    frame.fill_text(canvas::Text {
+                        content: item_name(item).to_string(),
+                        position: Point::new(label_bounds.x + 6.0, label_bounds.y + 9.0),
+                        color,
+                        size: iced::Pixels(10.0),
+                        align_y: iced::alignment::Vertical::Center,
+                        ..Default::default()
+                    });
+                }
+                let children = match item {
+                    Item::HorizontalLayout(layout) | Item::VerticalLayout(layout) => &layout.items,
+                    _ => unreachable!(),
+                };
+                let children_are_in_horizontal = matches!(item, Item::HorizontalLayout(_));
+                for (index, child) in children.iter().enumerate() {
+                    draw_item(
+                        frame,
+                        child,
+                        rect.x,
+                        rect.y,
+                        scale,
+                        font_names,
+                        images,
+                        selected_path
+                            .is_some_and(|path| path.first() == Some(&index) && path.len() == 1),
+                        selected_path.and_then(|path| selected_descendant_path(path, index)),
+                        false,
+                        children_are_in_horizontal,
+                    );
+                }
+                if selected {
+                    draw_layout_dividers(frame, item, rect, scale);
                 }
             }
         }
@@ -504,7 +566,7 @@ pub(crate) fn item_bounds(
     let rect = match item {
         Item::Text(item) => Rectangle::new(
             Point::new(offset_x + item.x.0 * scale, offset_y + item.y.0 * scale),
-            Size::new(item.width.0 * scale, item.height.0 * scale),
+            Size::new(item.width.0 * scale, text_display_height(item) * scale),
         ),
         Item::Rectangle(item) => Rectangle::new(
             Point::new(offset_x + item.x.0 * scale, offset_y + item.y.0 * scale),
@@ -531,4 +593,33 @@ pub(crate) fn item_bounds(
     };
 
     Some(rect)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wrapped_auto_height_text_expands_designer_bounds() {
+        let mut item = new_text_item("DejaVu Sans".to_string());
+        let Item::Text(text) = &mut item else {
+            unreachable!();
+        };
+        text.width = Mm(30.0);
+        text.height = Mm(5.0);
+        text.text = "Responsabil_sdfhjbksdfhhsgdffiaghfkhgqashg".to_string();
+        text.word_wrap = true;
+        text.auto_height = true;
+
+        let expected_height = {
+            let layout = designer_text_layout(text);
+            assert!(layout.lines.len() > 1);
+            let height = text_display_height(text);
+            assert!(height > text.height.0);
+            height
+        };
+
+        let bounds = item_bounds(&item, 0.0, 0.0, 1.0).expect("text has bounds");
+        assert_eq!(bounds.height, expected_height);
+    }
 }

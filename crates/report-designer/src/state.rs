@@ -47,21 +47,29 @@ impl Selection {
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum PropertyGroup {
     General,
+    Band,
     Geometry,
     TextValue,
     Font,
     TextColor,
     Alignment,
+    Appearance,
+    Shape,
+    Layout,
     Image,
 }
 
 pub(crate) struct CollapsedGroups {
     general: bool,
+    band: bool,
     geometry: bool,
     text_value: bool,
     font: bool,
     text_color: bool,
     alignment: bool,
+    appearance: bool,
+    shape: bool,
+    layout: bool,
     image: bool,
 }
 
@@ -69,11 +77,15 @@ impl Default for CollapsedGroups {
     fn default() -> Self {
         Self {
             general: false,
+            band: false,
             geometry: false,
             text_value: false,
             font: true,
             text_color: true,
             alignment: true,
+            appearance: true,
+            shape: false,
+            layout: false,
             image: false,
         }
     }
@@ -83,11 +95,15 @@ impl CollapsedGroups {
     pub(crate) fn toggle(&mut self, group: PropertyGroup) {
         let value = match group {
             PropertyGroup::General => &mut self.general,
+            PropertyGroup::Band => &mut self.band,
             PropertyGroup::Geometry => &mut self.geometry,
             PropertyGroup::TextValue => &mut self.text_value,
             PropertyGroup::Font => &mut self.font,
             PropertyGroup::TextColor => &mut self.text_color,
             PropertyGroup::Alignment => &mut self.alignment,
+            PropertyGroup::Appearance => &mut self.appearance,
+            PropertyGroup::Shape => &mut self.shape,
+            PropertyGroup::Layout => &mut self.layout,
             PropertyGroup::Image => &mut self.image,
         };
         *value = !*value;
@@ -96,14 +112,34 @@ impl CollapsedGroups {
     pub(crate) fn is_collapsed(&self, group: PropertyGroup) -> bool {
         match group {
             PropertyGroup::General => self.general,
+            PropertyGroup::Band => self.band,
             PropertyGroup::Geometry => self.geometry,
             PropertyGroup::TextValue => self.text_value,
             PropertyGroup::Font => self.font,
             PropertyGroup::TextColor => self.text_color,
             PropertyGroup::Alignment => self.alignment,
+            PropertyGroup::Appearance => self.appearance,
+            PropertyGroup::Shape => self.shape,
+            PropertyGroup::Layout => self.layout,
             PropertyGroup::Image => self.image,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum PaddingField {
+    Left,
+    Top,
+    Right,
+    Bottom,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum BorderSide {
+    Left,
+    Top,
+    Right,
+    Bottom,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
