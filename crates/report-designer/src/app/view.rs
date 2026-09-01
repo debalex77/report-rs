@@ -111,7 +111,16 @@ impl DesignerApp {
         } else {
             base
         };
-        if self.settings.is_some() {
+        if self.pending_layout_move.is_some() {
+            let modal = opaque(
+                container(self.layout_move_dialog())
+                    .center(Fill)
+                    .width(Fill)
+                    .height(Fill)
+                    .style(modal_backdrop_style),
+            );
+            stack![base, modal].into()
+        } else if self.settings.is_some() {
             let modal = opaque(
                 container(self.settings_dialog())
                     .center(Fill)

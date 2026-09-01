@@ -5,7 +5,8 @@ impl DesignerApp {
         let Some(selection) = self.selection else {
             return Task::none();
         };
-        let Some(Item::Text(item)) = item_at_selection(&self.report, selection) else {
+        let Some(item) = item_at_selection(&self.report, selection).and_then(first_text_item)
+        else {
             return Task::none();
         };
         let Some(font) = self.font_resolver.resolve(&item.font_spec()) else {

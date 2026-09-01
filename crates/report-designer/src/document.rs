@@ -80,6 +80,31 @@ pub(super) fn item_layout_mut(item: &mut Item) -> Option<&mut report_core::model
     }
 }
 
+pub(super) fn first_text_item(item: &Item) -> Option<&TextItem> {
+    match item {
+        Item::Text(text) => Some(text),
+        Item::HorizontalLayout(layout) | Item::VerticalLayout(layout) => {
+            layout.items.iter().find_map(first_text_item)
+        }
+        _ => None,
+    }
+}
+
+pub(super) fn update_text_items(item: &mut Item, update: &mut impl FnMut(&mut TextItem)) -> usize {
+    match item {
+        Item::Text(text) => {
+            update(text);
+            1
+        }
+        Item::HorizontalLayout(layout) | Item::VerticalLayout(layout) => layout
+            .items
+            .iter_mut()
+            .map(|child| update_text_items(child, update))
+            .sum(),
+        _ => 0,
+    }
+}
+
 pub(super) fn item_at_selection(report: &Report, selection: Selection) -> Option<&Item> {
     let mut item = report
         .pages
@@ -171,4 +196,20 @@ pub(super) fn resize_band_height(page: &mut Page, band_index: usize, dy: f32) ->
     let new_height = (old_height + dy).clamp(item_height, max_height);
     page.bands[band_index].height = Mm(new_height);
     (new_height - old_height).abs() > f32::EPSILON
+}
+
+pub(super) fn fit_band_to_contents(page: &mut Page, band_index: usize) -> bool {
+    let Some(band) = page.bands.get(band_index) else {
+        return false;
+    };
+    let content_height = band
+        .items
+        .iter()
+        .map(|item| {
+            let (_, y, _, height) = normalized_geometry(item);
+            y + height
+        })
+        .fold(5.0_f32, f32::max);
+    let delta = content_height - band.height.0;
+    resize_band_height(page, band_index, delta)
 }

@@ -4,8 +4,8 @@ use super::message::Message;
 
 pub(super) fn keyboard_shortcuts() -> Subscription<Message> {
     event::listen_with(|event, status, _window| {
-        if status == event::Status::Captured {
-            return None;
+        if let iced::Event::Keyboard(keyboard::Event::ModifiersChanged(modifiers)) = event {
+            return Some(Message::ModifiersChanged(modifiers));
         }
         let iced::Event::Keyboard(keyboard::Event::KeyPressed {
             key,
@@ -19,6 +19,15 @@ pub(super) fn keyboard_shortcuts() -> Subscription<Message> {
         };
         if repeat {
             return None;
+        }
+        if key == keyboard::Key::Named(keyboard::key::Named::Escape) {
+            return Some(Message::CancelStructureRename);
+        }
+        if status == event::Status::Captured {
+            return None;
+        }
+        if key == keyboard::Key::Named(keyboard::key::Named::F2) {
+            return Some(Message::BeginSelectedStructureRename);
         }
         if key == keyboard::Key::Named(keyboard::key::Named::Delete) {
             return Some(Message::Delete);

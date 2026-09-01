@@ -63,6 +63,12 @@ the report model, layout engine, preview, and output rendering.
 - Millimeter rulers, design grid, zoom, and resizeable side panels
 - Horizontal and vertical layouts with nested-layout support
 - Designer settings for page orientation, margins, and default font family
+- Properties and Structure tabs with a recursive report tree
+- Structure tree SVG icons, expand/collapse, direct rename, and synchronized selection
+- Structure tree multi-selection with Ctrl/Shift and hierarchical Drag & Drop
+- Drag & Drop between bands and layouts with insertion/containment indicators
+- Layout dismantling and explicit handling when moving nested items between bands
+- Automatic band growth and contextual Fit band to contents
 
 ## 🧱 Project structure
 
@@ -115,7 +121,11 @@ provides millimeter rulers and a grid, band and item tools, drag and resize
 handles, Undo/Redo history, and a resizeable Properties panel. Text, image,
 shape, horizontal-layout, and vertical-layout items can be added visually.
 Layouts can contain other layouts while their nested items remain selectable
-and editable.
+and editable. The Structure tab presents the full report hierarchy and supports
+direct renaming, multi-selection, and Drag & Drop between bands and layouts.
+Layouts can be dismantled from the context menu, while bands grow automatically
+when their content moves beyond the lower edge and can be fitted explicitly to
+their contents.
 
 ### report-cli
 

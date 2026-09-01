@@ -6,10 +6,38 @@ mod geometry;
 mod image;
 mod layout;
 mod shape;
+mod structure;
 mod text;
 
 impl DesignerApp {
     pub(super) fn inspector(&self) -> Element<'_, Message> {
+        let tabs = container(
+            row![
+                button(text("Properties").size(11))
+                    .width(Fill)
+                    .padding([5, 7])
+                    .style(sidebar_tab_style(
+                        self.sidebar_tab == SidebarTab::Properties
+                    ))
+                    .on_press(Message::ShowSidebarTab(SidebarTab::Properties)),
+                button(text("Structure").size(11))
+                    .width(Fill)
+                    .padding([5, 7])
+                    .style(sidebar_tab_style(self.sidebar_tab == SidebarTab::Structure))
+                    .on_press(Message::ShowSidebarTab(SidebarTab::Structure)),
+            ]
+            .spacing(4),
+        )
+        .padding(3)
+        .width(Fill)
+        .style(sidebar_tabs_style);
+        if self.sidebar_tab == SidebarTab::Structure {
+            return container(iced::widget::column![tabs, structure::view(self)].spacing(5))
+                .padding(8)
+                .width(self.properties_width)
+                .height(Fill)
+                .into();
+        }
         let status = if self.dirty {
             format!("● {}", self.status)
         } else {
@@ -54,9 +82,11 @@ impl DesignerApp {
             content = content.push(text("Click an item on the page to select it."));
         }
 
-        container(scrollable(content.padding(8)).height(Fill))
-            .width(self.properties_width)
-            .height(Fill)
-            .into()
+        container(
+            iced::widget::column![tabs, scrollable(content.padding(8)).height(Fill)].spacing(5),
+        )
+        .width(self.properties_width)
+        .height(Fill)
+        .into()
     }
 }

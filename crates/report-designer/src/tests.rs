@@ -364,6 +364,53 @@ fn band_resize_does_not_shrink_below_its_items() {
 }
 
 #[test]
+fn fit_band_to_contents_shrinks_to_lowest_item_edge() {
+    let mut report = blank_report();
+    let mut first = new_text_item("DejaVu Sans".to_string());
+    let mut second = new_text_item("DejaVu Sans".to_string());
+    set_item_frame(&mut first, 0.0, 4.0, 40.0, 8.0);
+    set_item_frame(&mut second, 0.0, 18.0, 40.0, 12.0);
+    report.pages[0].bands.push(Band {
+        kind: BandKind::PageHeader,
+        height: Mm(55.0),
+        items: vec![first, second],
+    });
+
+    assert!(fit_band_to_contents(&mut report.pages[0], 0));
+    assert_eq!(report.pages[0].bands[0].height, Mm(30.0));
+}
+
+#[test]
+fn fit_empty_band_uses_minimum_height() {
+    let mut report = blank_report();
+    report.pages[0].bands.push(Band {
+        kind: BandKind::ReportFooter,
+        height: Mm(30.0),
+        items: Vec::new(),
+    });
+
+    assert!(fit_band_to_contents(&mut report.pages[0], 0));
+    assert_eq!(report.pages[0].bands[0].height, Mm(5.0));
+    assert!(!fit_band_to_contents(&mut report.pages[0], 0));
+}
+
+#[test]
+fn passive_messages_do_not_close_context_menu() {
+    assert!(!update::message_closes_context_menu(&Message::FontLoaded));
+    assert!(!update::message_closes_context_menu(
+        &Message::ModifiersChanged(keyboard::Modifiers::SHIFT)
+    ));
+}
+
+#[test]
+fn context_menu_action_closes_context_menu() {
+    assert!(update::message_closes_context_menu(&Message::Copy));
+    assert!(update::message_closes_context_menu(
+        &Message::FitActiveBandToContents
+    ));
+}
+
+#[test]
 fn band_inputs_sync_data_source_and_height() {
     let band = Band {
         kind: BandKind::Data {
@@ -500,6 +547,62 @@ fn equalize_nested_layout_children_preserves_the_nested_structure() {
             .iter()
             .all(|child| normalized_geometry(child).3 == 20.0)
     );
+}
+
+#[test]
+fn layout_text_style_updates_all_nested_text_items() {
+    let mut nested = Item::VerticalLayout(LayoutItem {
+        name: "verticalLayout1".to_string(),
+        x: Mm(0.0),
+        y: Mm(0.0),
+        width: Mm(60.0),
+        height: Mm(30.0),
+        items: vec![
+            new_text_item("DejaVu Sans".to_string()),
+            Item::HorizontalLayout(LayoutItem {
+                name: "horizontalLayout1".to_string(),
+                x: Mm(0.0),
+                y: Mm(15.0),
+                width: Mm(60.0),
+                height: Mm(15.0),
+                items: vec![new_image_item(), new_text_item("DejaVu Sans".to_string())],
+            }),
+        ],
+    });
+
+    let count = update_text_items(&mut nested, &mut |text| {
+        text.font_family = "DejaVu Serif".to_string();
+        text.bold = true;
+        text.text_color = ReportColor::rgb(45, 105, 200);
+        text.border = Some(Border {
+            left: true,
+            top: true,
+            right: true,
+            bottom: true,
+            width: 0.5,
+        });
+    });
+
+    assert_eq!(count, 2);
+    let representative = first_text_item(&nested).expect("layout must contain text");
+    assert_eq!(representative.font_family, "DejaVu Serif");
+    assert!(representative.bold);
+    assert_eq!(representative.text_color, ReportColor::rgb(45, 105, 200));
+    assert!(representative.border.is_some());
+    let Item::VerticalLayout(layout) = nested else {
+        unreachable!();
+    };
+    let Item::HorizontalLayout(inner) = &layout.items[1] else {
+        unreachable!();
+    };
+    let Item::Text(second) = &inner.items[1] else {
+        unreachable!();
+    };
+    assert_eq!(second.font_family, "DejaVu Serif");
+    assert!(second.bold);
+    assert_eq!(second.text_color, ReportColor::rgb(45, 105, 200));
+    assert!(second.border.is_some());
+    assert!(matches!(inner.items[0], Item::Image(_)));
 }
 
 #[test]
@@ -1012,4 +1115,463 @@ fn generated_text_number_is_global_across_report_bands() {
     };
     assert_eq!(second.name, "itemText2");
     assert_eq!(second.text, "text2");
+}
+
+#[test]
+fn structure_reorder_keeps_top_level_item_geometry() {
+    let mut report = blank_report();
+    let mut first = new_text_item("DejaVu Sans".to_string());
+    let mut second = new_text_item("DejaVu Sans".to_string());
+    *item_name_mut(&mut first) = "itemText1".to_string();
+    *item_name_mut(&mut second) = "itemText2".to_string();
+    set_item_frame(&mut first, 7.0, 3.0, 21.0, 8.0);
+    set_item_frame(&mut second, 40.0, 12.0, 31.0, 9.0);
+    report.pages[0].bands.push(Band {
+        kind: BandKind::ReportHeader,
+        height: Mm(30.0),
+        items: vec![first, second],
+    });
+
+    let selection = reorder_item_same_parent(
+        &mut report,
+        Selection::top_level(0, 0),
+        Selection::top_level(0, 1),
+    )
+    .expect("items with the same parent can be reordered");
+    let items = &report.pages[0].bands[0].items;
+
+    assert_eq!(selection, Selection::top_level(0, 1));
+    assert_eq!(item_name(&items[0]), "itemText2");
+    assert_eq!(geometry_values(&items[0]), (40.0, 12.0, 31.0, 9.0));
+    assert_eq!(item_name(&items[1]), "itemText1");
+    assert_eq!(geometry_values(&items[1]), (7.0, 3.0, 21.0, 8.0));
+}
+
+#[test]
+fn structure_reorder_moves_nested_item_into_existing_layout_slot() {
+    let mut report = blank_report();
+    let mut children = ["itemText1", "itemText2", "itemText3"].map(|name| {
+        let mut item = new_text_item("DejaVu Sans".to_string());
+        *item_name_mut(&mut item) = name.to_string();
+        item
+    });
+    set_item_frame(&mut children[0], 0.0, 0.0, 10.0, 12.0);
+    set_item_frame(&mut children[1], 10.0, 0.0, 20.0, 12.0);
+    set_item_frame(&mut children[2], 30.0, 0.0, 30.0, 12.0);
+    report.pages[0].bands.push(Band {
+        kind: BandKind::ReportHeader,
+        height: Mm(30.0),
+        items: vec![Item::HorizontalLayout(LayoutItem {
+            name: "horizontalLayout1".to_string(),
+            x: Mm(0.0),
+            y: Mm(0.0),
+            width: Mm(60.0),
+            height: Mm(12.0),
+            items: children.into(),
+        })],
+    });
+    let parent = Selection::top_level(0, 0);
+    let source = parent.push(0).unwrap();
+    let target = parent.push(2).unwrap();
+
+    let selection = reorder_item_same_parent(&mut report, source, target)
+        .expect("layout children can be reordered");
+    let Item::HorizontalLayout(layout) = &report.pages[0].bands[0].items[0] else {
+        unreachable!();
+    };
+
+    assert_eq!(selection, target);
+    assert_eq!(item_name(&layout.items[0]), "itemText2");
+    assert_eq!(item_name(&layout.items[1]), "itemText3");
+    assert_eq!(item_name(&layout.items[2]), "itemText1");
+    assert_eq!(geometry_values(&layout.items[0]), (0.0, 0.0, 10.0, 12.0));
+    assert_eq!(geometry_values(&layout.items[1]), (10.0, 0.0, 20.0, 12.0));
+    assert_eq!(geometry_values(&layout.items[2]), (30.0, 0.0, 30.0, 12.0));
+}
+
+#[test]
+fn structure_reorder_rejects_different_parents() {
+    let mut report = blank_report();
+    report.pages[0].bands.push(Band {
+        kind: BandKind::ReportHeader,
+        height: Mm(30.0),
+        items: vec![
+            Item::HorizontalLayout(LayoutItem {
+                name: "horizontalLayout1".to_string(),
+                x: Mm(0.0),
+                y: Mm(0.0),
+                width: Mm(60.0),
+                height: Mm(12.0),
+                items: vec![new_text_item("DejaVu Sans".to_string())],
+            }),
+            new_text_item("DejaVu Sans".to_string()),
+        ],
+    });
+    let source = Selection::top_level(0, 0).push(0).unwrap();
+    let target = Selection::top_level(0, 1);
+
+    assert_eq!(reorder_item_same_parent(&mut report, source, target), None);
+    let items = &report.pages[0].bands[0].items;
+    assert_eq!(items.len(), 2);
+    assert_eq!(item_name(&items[0]), "horizontalLayout1");
+    assert!(matches!(items[1], Item::Text(_)));
+}
+
+#[test]
+fn structure_drag_moves_nested_item_to_another_band() {
+    let mut report = blank_report();
+    let mut child = new_text_item("DejaVu Sans".to_string());
+    *item_name_mut(&mut child) = "itemText1".to_string();
+    report.pages[0].bands.push(Band {
+        kind: BandKind::ReportHeader,
+        height: Mm(30.0),
+        items: vec![Item::HorizontalLayout(LayoutItem {
+            name: "horizontalLayout1".to_string(),
+            x: Mm(0.0),
+            y: Mm(0.0),
+            width: Mm(60.0),
+            height: Mm(12.0),
+            items: vec![child],
+        })],
+    });
+    report.pages[0].bands.push(Band {
+        kind: BandKind::Data {
+            source: "data".to_string(),
+        },
+        height: Mm(30.0),
+        items: Vec::new(),
+    });
+    let source = Selection::top_level(0, 0).push(0).unwrap();
+
+    let selection = move_item_to_band(&mut report, source, 1)
+        .expect("an item can be moved from a layout to another band");
+
+    assert_eq!(selection, Selection::top_level(1, 0));
+    let Item::HorizontalLayout(layout) = &report.pages[0].bands[0].items[0] else {
+        unreachable!();
+    };
+    assert!(layout.items.is_empty());
+    assert_eq!(item_name(&report.pages[0].bands[1].items[0]), "itemText1");
+}
+
+#[test]
+fn dismantling_layout_preserves_children_visual_positions() {
+    let mut report = blank_report();
+    let mut first = new_text_item("DejaVu Sans".to_string());
+    let mut second = new_text_item("DejaVu Sans".to_string());
+    *item_name_mut(&mut first) = "itemText1".to_string();
+    *item_name_mut(&mut second) = "itemText2".to_string();
+    set_item_frame(&mut first, 0.0, 0.0, 20.0, 10.0);
+    set_item_frame(&mut second, 20.0, 0.0, 30.0, 10.0);
+    report.pages[0].bands.push(Band {
+        kind: BandKind::ReportHeader,
+        height: Mm(30.0),
+        items: vec![Item::HorizontalLayout(LayoutItem {
+            name: "horizontalLayout1".to_string(),
+            x: Mm(12.0),
+            y: Mm(7.0),
+            width: Mm(50.0),
+            height: Mm(10.0),
+            items: vec![first, second],
+        })],
+    });
+
+    let selections = dismantle_layout(&mut report, Selection::top_level(0, 0))
+        .expect("selected layout can be dismantled");
+    let items = &report.pages[0].bands[0].items;
+
+    assert_eq!(selections.len(), 2);
+    assert_eq!(selections[0], Selection::top_level(0, 0));
+    assert_eq!(selections[1], Selection::top_level(0, 1));
+    assert_eq!(item_name(&items[0]), "itemText1");
+    assert_eq!(geometry_values(&items[0]), (12.0, 7.0, 20.0, 10.0));
+    assert_eq!(item_name(&items[1]), "itemText2");
+    assert_eq!(geometry_values(&items[1]), (32.0, 7.0, 30.0, 10.0));
+}
+
+#[test]
+fn structure_drag_moves_item_into_layout_and_equalizes_slots() {
+    let mut report = blank_report();
+    let mut outside = new_text_item("DejaVu Sans".to_string());
+    let mut inside = new_text_item("DejaVu Sans".to_string());
+    *item_name_mut(&mut outside) = "itemText1".to_string();
+    *item_name_mut(&mut inside) = "itemText2".to_string();
+    report.pages[0].bands.push(Band {
+        kind: BandKind::ReportHeader,
+        height: Mm(30.0),
+        items: vec![
+            outside,
+            Item::HorizontalLayout(LayoutItem {
+                name: "horizontalLayout1".to_string(),
+                x: Mm(10.0),
+                y: Mm(5.0),
+                width: Mm(60.0),
+                height: Mm(12.0),
+                items: vec![inside],
+            }),
+        ],
+    });
+
+    let selection = move_item_into_layout(
+        &mut report,
+        Selection::top_level(0, 0),
+        Selection::top_level(0, 1),
+    )
+    .expect("top-level item can be moved into a layout");
+    let Item::HorizontalLayout(layout) = &report.pages[0].bands[0].items[0] else {
+        unreachable!();
+    };
+
+    assert_eq!(selection, Selection::top_level(0, 0).push(1).unwrap());
+    assert_eq!(item_name(&layout.items[0]), "itemText2");
+    assert_eq!(item_name(&layout.items[1]), "itemText1");
+    assert_eq!(geometry_values(&layout.items[0]), (0.0, 0.0, 30.0, 12.0));
+    assert_eq!(geometry_values(&layout.items[1]), (30.0, 0.0, 30.0, 12.0));
+}
+
+#[test]
+fn structure_drag_moves_item_between_layouts() {
+    let mut report = blank_report();
+    let mut first = new_text_item("DejaVu Sans".to_string());
+    let mut second = new_text_item("DejaVu Sans".to_string());
+    *item_name_mut(&mut first) = "itemText1".to_string();
+    *item_name_mut(&mut second) = "itemText2".to_string();
+    report.pages[0].bands.push(Band {
+        kind: BandKind::ReportHeader,
+        height: Mm(30.0),
+        items: vec![
+            Item::HorizontalLayout(LayoutItem {
+                name: "horizontalLayout1".to_string(),
+                x: Mm(0.0),
+                y: Mm(0.0),
+                width: Mm(40.0),
+                height: Mm(10.0),
+                items: vec![first],
+            }),
+            Item::VerticalLayout(LayoutItem {
+                name: "verticalLayout1".to_string(),
+                x: Mm(50.0),
+                y: Mm(0.0),
+                width: Mm(30.0),
+                height: Mm(20.0),
+                items: vec![second],
+            }),
+        ],
+    });
+    let source = Selection::top_level(0, 0).push(0).unwrap();
+    let target = Selection::top_level(0, 1);
+
+    let selection = move_item_into_layout(&mut report, source, target)
+        .expect("item can be moved between layouts");
+    let Item::HorizontalLayout(source_layout) = &report.pages[0].bands[0].items[0] else {
+        unreachable!();
+    };
+    let Item::VerticalLayout(target_layout) = &report.pages[0].bands[0].items[1] else {
+        unreachable!();
+    };
+
+    assert!(source_layout.items.is_empty());
+    assert_eq!(selection, target.push(1).unwrap());
+    assert_eq!(item_name(&target_layout.items[0]), "itemText2");
+    assert_eq!(item_name(&target_layout.items[1]), "itemText1");
+    assert_eq!(
+        geometry_values(&target_layout.items[0]),
+        (0.0, 0.0, 30.0, 10.0)
+    );
+    assert_eq!(
+        geometry_values(&target_layout.items[1]),
+        (0.0, 10.0, 30.0, 10.0)
+    );
+}
+
+#[test]
+fn structure_drag_rejects_moving_layout_into_its_descendant() {
+    let mut report = blank_report();
+    report.pages[0].bands.push(Band {
+        kind: BandKind::ReportHeader,
+        height: Mm(30.0),
+        items: vec![Item::VerticalLayout(LayoutItem {
+            name: "verticalLayout1".to_string(),
+            x: Mm(0.0),
+            y: Mm(0.0),
+            width: Mm(60.0),
+            height: Mm(20.0),
+            items: vec![Item::HorizontalLayout(LayoutItem {
+                name: "horizontalLayout1".to_string(),
+                x: Mm(0.0),
+                y: Mm(0.0),
+                width: Mm(60.0),
+                height: Mm(20.0),
+                items: Vec::new(),
+            })],
+        })],
+    });
+    let source = Selection::top_level(0, 0);
+    let target = source.push(0).unwrap();
+
+    assert_eq!(move_item_into_layout(&mut report, source, target), None);
+    assert_eq!(
+        item_name(&report.pages[0].bands[0].items[0]),
+        "verticalLayout1"
+    );
+}
+
+#[test]
+fn structure_multi_drag_reorders_items_as_one_group() {
+    let mut report = blank_report();
+    let items = ["itemText1", "itemText2", "itemText3", "itemText4"].map(|name| {
+        let mut item = new_text_item("DejaVu Sans".to_string());
+        *item_name_mut(&mut item) = name.to_string();
+        item
+    });
+    report.pages[0].bands.push(Band {
+        kind: BandKind::ReportHeader,
+        height: Mm(30.0),
+        items: items.into(),
+    });
+    let sources = [Selection::top_level(0, 0), Selection::top_level(0, 2)];
+
+    let selections = reorder_items_same_parent(&mut report, &sources, Selection::top_level(0, 3))
+        .expect("multiple siblings can be reordered together");
+    let names = report.pages[0].bands[0]
+        .items
+        .iter()
+        .map(item_name)
+        .collect::<Vec<_>>();
+
+    assert_eq!(names, ["itemText2", "itemText1", "itemText3", "itemText4"]);
+    assert_eq!(
+        selections,
+        [Selection::top_level(0, 1), Selection::top_level(0, 2)]
+    );
+}
+
+#[test]
+fn structure_multi_drag_moves_items_into_layout() {
+    let mut report = blank_report();
+    let mut first = new_text_item("DejaVu Sans".to_string());
+    let mut second = new_text_item("DejaVu Sans".to_string());
+    *item_name_mut(&mut first) = "itemText1".to_string();
+    *item_name_mut(&mut second) = "itemText2".to_string();
+    report.pages[0].bands.push(Band {
+        kind: BandKind::ReportHeader,
+        height: Mm(30.0),
+        items: vec![
+            first,
+            second,
+            Item::HorizontalLayout(LayoutItem {
+                name: "horizontalLayout1".to_string(),
+                x: Mm(0.0),
+                y: Mm(0.0),
+                width: Mm(60.0),
+                height: Mm(10.0),
+                items: Vec::new(),
+            }),
+        ],
+    });
+    let sources = [Selection::top_level(0, 0), Selection::top_level(0, 1)];
+
+    let selections = move_items_into_layout(&mut report, &sources, Selection::top_level(0, 2))
+        .expect("multiple items can be moved into a layout");
+    let Item::HorizontalLayout(layout) = &report.pages[0].bands[0].items[0] else {
+        unreachable!();
+    };
+
+    assert_eq!(selections.len(), 2);
+    assert_eq!(item_name(&layout.items[0]), "itemText1");
+    assert_eq!(item_name(&layout.items[1]), "itemText2");
+    assert_eq!(geometry_values(&layout.items[0]), (0.0, 0.0, 30.0, 10.0));
+    assert_eq!(geometry_values(&layout.items[1]), (30.0, 0.0, 30.0, 10.0));
+}
+
+#[test]
+fn moving_item_to_band_grows_target_band_when_needed() {
+    let mut report = blank_report();
+    let mut item = new_text_item("DejaVu Sans".to_string());
+    set_item_frame(&mut item, 5.0, 28.0, 40.0, 12.0);
+    report.pages[0].bands.push(Band {
+        kind: BandKind::ReportHeader,
+        height: Mm(50.0),
+        items: vec![item],
+    });
+    report.pages[0].bands.push(Band {
+        kind: BandKind::Data {
+            source: "data".to_string(),
+        },
+        height: Mm(20.0),
+        items: Vec::new(),
+    });
+
+    move_item_to_band(&mut report, Selection::top_level(0, 0), 1)
+        .expect("item can be moved to target band");
+
+    assert_eq!(report.pages[0].bands[1].height, Mm(40.0));
+}
+
+#[test]
+fn fitting_items_never_shrinks_band() {
+    let mut report = blank_report();
+    let mut item = new_text_item("DejaVu Sans".to_string());
+    set_item_frame(&mut item, 0.0, 2.0, 20.0, 8.0);
+    report.pages[0].bands.push(Band {
+        kind: BandKind::Data {
+            source: "data".to_string(),
+        },
+        height: Mm(30.0),
+        items: vec![item],
+    });
+
+    assert!(!grow_band_to_fit_items(&mut report, 0));
+    assert_eq!(report.pages[0].bands[0].height, Mm(30.0));
+}
+
+#[test]
+fn canvas_move_can_expand_item_beyond_current_band_height() {
+    let mut report = blank_report();
+    let mut item = new_text_item("DejaVu Sans".to_string());
+    set_item_frame(&mut item, 0.0, 10.0, 20.0, 8.0);
+    report.pages[0].bands.push(Band {
+        kind: BandKind::Data {
+            source: "data".to_string(),
+        },
+        height: Mm(20.0),
+        items: vec![item],
+    });
+
+    move_item(
+        &mut report.pages[0].bands[0].items[0],
+        0.0,
+        7.0,
+        100.0,
+        27.0,
+    );
+    assert!(grow_band_to_fit_items(&mut report, 0));
+
+    assert_eq!(geometry_values(&report.pages[0].bands[0].items[0]).1, 17.0);
+    assert_eq!(report.pages[0].bands[0].height, Mm(25.0));
+}
+
+#[test]
+fn canvas_resize_can_grow_band_at_bottom_edge() {
+    let mut report = blank_report();
+    let mut item = new_text_item("DejaVu Sans".to_string());
+    set_item_frame(&mut item, 0.0, 8.0, 20.0, 10.0);
+    report.pages[0].bands.push(Band {
+        kind: BandKind::ReportFooter,
+        height: Mm(20.0),
+        items: vec![item],
+    });
+
+    resize_item(
+        &mut report.pages[0].bands[0].items[0],
+        ResizeHandle::Bottom,
+        0.0,
+        6.0,
+        100.0,
+        26.0,
+    );
+    assert!(grow_band_to_fit_items(&mut report, 0));
+
+    assert_eq!(geometry_values(&report.pages[0].bands[0].items[0]).3, 16.0);
+    assert_eq!(report.pages[0].bands[0].height, Mm(24.0));
 }

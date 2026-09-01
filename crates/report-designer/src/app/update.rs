@@ -9,7 +9,7 @@ impl DesignerApp {
             self.open_menu = None;
             self.recent_reports_expanded = false;
         }
-        if !matches!(&message, Message::OpenContextMenu { .. }) {
+        if message_closes_context_menu(&message) {
             self.context_menu_position = None;
         }
         match message {
@@ -76,7 +76,7 @@ impl DesignerApp {
                 if let Some(page) = self.report.pages.first_mut() {
                     let band_width = page.printable_width().0;
                     if let Some(band) = page.bands.get_mut(selection.band) {
-                        let band_height = band.height.0;
+                        let band_height = band.height.0 + dy.max(0.0);
                         if let Some(item) = band.items.get_mut(selection.top_index()) {
                             move_item(item, dx, dy, band_width, band_height);
                             self.selection = Some(selection);
@@ -87,6 +87,7 @@ impl DesignerApp {
                     }
                 }
                 if changed {
+                    grow_band_to_fit_items(&mut self.report, selection.band);
                     self.sync_geometry_inputs(selection);
                 }
             }
@@ -104,7 +105,7 @@ impl DesignerApp {
                 if let Some(page) = self.report.pages.first_mut() {
                     let band_width = page.printable_width().0;
                     if let Some(band) = page.bands.get_mut(selection.band) {
-                        let band_height = band.height.0;
+                        let band_height = band.height.0 + dy.max(0.0);
                         if let Some(item) = band.items.get_mut(selection.top_index()) {
                             resize_item(item, handle, dx, dy, band_width, band_height);
                             self.selection = Some(selection);
@@ -115,6 +116,7 @@ impl DesignerApp {
                     }
                 }
                 if changed {
+                    grow_band_to_fit_items(&mut self.report, selection.band);
                     self.sync_geometry_inputs(selection);
                 }
             }
@@ -203,7 +205,7 @@ impl DesignerApp {
                 self.record_undo();
                 self.text_inputs.text.perform(action);
                 let value = self.text_inputs.text.text();
-                if self.update_selected_text(|item| item.text = value) {
+                if self.update_selected_text(|item| item.text = value.clone()) {
                     self.mark_dirty();
                 }
             }
@@ -228,7 +230,9 @@ impl DesignerApp {
                 let Some(selection) = self.selection else {
                     return Task::none();
                 };
-                let Some(Item::Text(item)) = item_at_selection(&self.report, selection) else {
+                let Some(item) =
+                    item_at_selection(&self.report, selection).and_then(first_text_item)
+                else {
                     return Task::none();
                 };
                 let font_size = (item.font_size + delta).clamp(1.0, 200.0);
@@ -279,7 +283,7 @@ impl DesignerApp {
             Message::FontFamilyChanged(value) => {
                 self.text_inputs.font_family.clone_from(&value);
                 self.record_undo();
-                if self.update_selected_text(|item| item.font_family = value) {
+                if self.update_selected_text(|item| item.font_family = value.clone()) {
                     self.mark_dirty();
                     return self.load_selected_font();
                 }
@@ -423,9 +427,8 @@ impl DesignerApp {
                     let enabled = self
                         .selection
                         .and_then(|selection| item_at_selection(&self.report, selection))
-                        .is_some_and(
-                            |item| matches!(item, Item::Text(text) if text.border.is_some()),
-                        );
+                        .and_then(first_text_item)
+                        .is_some_and(|text| text.border.is_some());
                     if enabled {
                         self.record_undo();
                         if self.update_selected_text(|item| {
@@ -445,7 +448,8 @@ impl DesignerApp {
                 let enabled = self
                     .selection
                     .and_then(|selection| item_at_selection(&self.report, selection))
-                    .is_some_and(|item| matches!(item, Item::Text(text) if text.border.is_some()));
+                    .and_then(first_text_item)
+                    .is_some_and(|text| text.border.is_some());
                 if enabled {
                     self.record_undo();
                     if self.update_selected_text(|item| {
@@ -500,6 +504,26 @@ impl DesignerApp {
                     if let Some(band) = self.active_band {
                         self.sync_band_inputs(band);
                     }
+                    self.mark_dirty();
+                }
+            }
+            Message::FitActiveBandToContents => {
+                self.context_menu_position = None;
+                let Some(band) = self.active_band else {
+                    return Task::none();
+                };
+                let previous_report = self.report.clone();
+                let changed = self
+                    .report
+                    .pages
+                    .first_mut()
+                    .is_some_and(|page| fit_band_to_contents(page, band));
+                if changed {
+                    self.record_undo();
+                    if let Some(snapshot) = self.undo_stack.last_mut() {
+                        *snapshot = previous_report;
+                    }
+                    self.sync_band_inputs(band);
                     self.mark_dirty();
                 }
             }
@@ -572,6 +596,305 @@ impl DesignerApp {
             }
             Message::CloseContextMenu => self.context_menu_position = None,
             Message::ToggleProperties => self.properties_visible = !self.properties_visible,
+            Message::ShowSidebarTab(tab) => self.sidebar_tab = tab,
+            Message::SelectStructureBand(band) => {
+                self.selection = None;
+                self.selected_items.clear();
+                self.active_band = Some(band);
+                self.sync_band_inputs(band);
+            }
+            Message::ToggleStructureLayout(selection) => {
+                if !self.collapsed_structure_layouts.remove(&selection) {
+                    self.collapsed_structure_layouts.insert(selection);
+                }
+            }
+            Message::BeginStructureDrag(selection) => {
+                if report_contains_selection(&self.report, selection) {
+                    if self.keyboard_modifiers.shift() {
+                        if let Some(anchor) = self.structure_selection_anchor
+                            && anchor.band == selection.band
+                            && anchor.parent_indices() == selection.parent_indices()
+                        {
+                            let start = anchor.item_index().min(selection.item_index());
+                            let end = anchor.item_index().max(selection.item_index());
+                            self.selected_items = (start..=end)
+                                .map(|index| selection.with_item_index(index))
+                                .collect();
+                        } else {
+                            self.selected_items = vec![selection];
+                        }
+                    } else if self.keyboard_modifiers.control() {
+                        if let Some(index) = self
+                            .selected_items
+                            .iter()
+                            .position(|selected| *selected == selection)
+                        {
+                            self.selected_items.remove(index);
+                            self.structure_drag = None;
+                            self.selection = self.selected_items.last().copied();
+                            return Task::none();
+                        }
+                        self.selected_items.push(selection);
+                        self.structure_selection_anchor = Some(selection);
+                    } else if !self.selected_items.contains(&selection) {
+                        self.selected_items = vec![selection];
+                        self.structure_selection_anchor = Some(selection);
+                    }
+                    self.structure_drag = Some(selection);
+                    self.structure_drop_target = Some(StructureDropTarget::Item(selection));
+                    self.selection = Some(selection);
+                    self.active_band = Some(selection.band);
+                    self.sync_geometry_inputs(selection);
+                }
+            }
+            Message::HoverStructureDrop(target) => {
+                self.structure_drop_target = self.structure_drag.and_then(|source| {
+                    (source.band == target.band
+                        && source.parent_indices() == target.parent_indices()
+                        || source != target && !source.is_ancestor_of(target))
+                    .then_some(StructureDropTarget::Item(target))
+                });
+            }
+            Message::HoverStructureBand(band) => {
+                self.structure_drop_target = self.structure_drag.and(
+                    report_contains_band(&self.report, band)
+                        .then_some(StructureDropTarget::Band(band)),
+                );
+            }
+            Message::DropStructureItem => {
+                let Some(source) = self.structure_drag.take() else {
+                    return Task::none();
+                };
+                let Some(target) = self.structure_drop_target.take() else {
+                    return Task::none();
+                };
+                if self.selected_items.len() > 1 && self.selected_items.contains(&source) {
+                    let previous_report = self.report.clone();
+                    let selections = match target {
+                        StructureDropTarget::Band(band) => {
+                            move_items_to_band(&mut self.report, &self.selected_items, band)
+                        }
+                        StructureDropTarget::Item(target) => reorder_items_same_parent(
+                            &mut self.report,
+                            &self.selected_items,
+                            target,
+                        )
+                        .or_else(|| {
+                            item_at_selection(&self.report, target)
+                                .is_some_and(|item| item_layout(item).is_some())
+                                .then(|| {
+                                    move_items_into_layout(
+                                        &mut self.report,
+                                        &self.selected_items,
+                                        target,
+                                    )
+                                })
+                                .flatten()
+                        })
+                        .or_else(|| {
+                            (target.band != source.band && target.is_top_level())
+                                .then(|| {
+                                    move_items_to_band(
+                                        &mut self.report,
+                                        &self.selected_items,
+                                        target.band,
+                                    )
+                                })
+                                .flatten()
+                        }),
+                    };
+                    if let Some(selections) = selections {
+                        self.record_undo();
+                        if let Some(snapshot) = self.undo_stack.last_mut() {
+                            *snapshot = previous_report;
+                        }
+                        self.selection = selections.first().copied();
+                        self.selected_items = selections;
+                        if let Some(selection) = self.selection {
+                            self.active_band = Some(selection.band);
+                            self.sync_geometry_inputs(selection);
+                        }
+                        self.mark_dirty();
+                    }
+                    return Task::none();
+                }
+                let target_band = match target {
+                    StructureDropTarget::Band(band) => Some(band),
+                    StructureDropTarget::Item(target) if target.band != source.band => {
+                        Some(target.band)
+                    }
+                    StructureDropTarget::Item(_) => None,
+                };
+                if let (Some(layout), Some(_)) = (source.parent(), target_band) {
+                    self.pending_layout_move = Some(PendingLayoutMove {
+                        source,
+                        layout,
+                        target,
+                    });
+                    return Task::none();
+                }
+                let previous_report = self.report.clone();
+                let selection = match target {
+                    StructureDropTarget::Item(target) => {
+                        reorder_item_same_parent(&mut self.report, source, target).or_else(|| {
+                            if item_at_selection(&self.report, target)
+                                .is_some_and(|item| item_layout(item).is_some())
+                            {
+                                move_item_into_layout(&mut self.report, source, target)
+                            } else {
+                                move_item_before(&mut self.report, source, target)
+                            }
+                        })
+                    }
+                    StructureDropTarget::Band(band) => {
+                        move_item_to_band(&mut self.report, source, band)
+                    }
+                };
+                if let Some(selection) = selection {
+                    self.record_undo();
+                    if let Some(snapshot) = self.undo_stack.last_mut() {
+                        *snapshot = previous_report;
+                    }
+                    self.selection = Some(selection);
+                    self.selected_items = vec![selection];
+                    self.active_band = Some(selection.band);
+                    self.sync_geometry_inputs(selection);
+                    self.mark_dirty();
+                }
+            }
+            Message::MoveEntireLayout => {
+                let Some(pending) = self.pending_layout_move.take() else {
+                    return Task::none();
+                };
+                let previous_report = self.report.clone();
+                let selection = match pending.target {
+                    StructureDropTarget::Band(band) => {
+                        move_item_to_band(&mut self.report, pending.layout, band)
+                    }
+                    StructureDropTarget::Item(target) => {
+                        move_item_into_layout(&mut self.report, pending.layout, target)
+                            .or_else(|| move_item_before(&mut self.report, pending.layout, target))
+                    }
+                };
+                if let Some(selection) = selection {
+                    self.record_undo();
+                    if let Some(snapshot) = self.undo_stack.last_mut() {
+                        *snapshot = previous_report;
+                    }
+                    self.selection = Some(selection);
+                    self.selected_items = vec![selection];
+                    self.active_band = Some(selection.band);
+                    self.sync_geometry_inputs(selection);
+                    self.mark_dirty();
+                }
+            }
+            Message::DismantleLayoutAndMoveItem => {
+                let Some(pending) = self.pending_layout_move.take() else {
+                    return Task::none();
+                };
+                let previous_report = self.report.clone();
+                let child_index = pending.source.item_index();
+                let selection = dismantle_layout(&mut self.report, pending.layout)
+                    .and_then(|selections| selections.get(child_index).copied())
+                    .and_then(|selection| match pending.target {
+                        StructureDropTarget::Band(band) => {
+                            move_item_to_band(&mut self.report, selection, band)
+                        }
+                        StructureDropTarget::Item(target) => {
+                            let adjusted_target = target.adjusted_after_removal(pending.layout)?;
+                            move_item_into_layout(&mut self.report, selection, adjusted_target)
+                                .or_else(|| {
+                                    move_item_before(&mut self.report, selection, adjusted_target)
+                                })
+                        }
+                    });
+                if let Some(selection) = selection {
+                    self.record_undo();
+                    if let Some(snapshot) = self.undo_stack.last_mut() {
+                        *snapshot = previous_report;
+                    }
+                    self.selection = Some(selection);
+                    self.selected_items = vec![selection];
+                    self.active_band = Some(selection.band);
+                    self.sync_geometry_inputs(selection);
+                    self.mark_dirty();
+                } else {
+                    self.report = previous_report;
+                }
+            }
+            Message::CancelLayoutMove => self.pending_layout_move = None,
+            Message::DismantleSelectedLayout => {
+                self.context_menu_position = None;
+                let Some(selection) = self.selection else {
+                    return Task::none();
+                };
+                let previous_report = self.report.clone();
+                if let Some(selections) = dismantle_layout(&mut self.report, selection) {
+                    self.record_undo();
+                    if let Some(snapshot) = self.undo_stack.last_mut() {
+                        *snapshot = previous_report;
+                    }
+                    self.selection = selections.first().copied();
+                    self.selected_items = selections;
+                    self.active_band = Some(selection.band);
+                    if let Some(selection) = self.selection {
+                        self.sync_geometry_inputs(selection);
+                    }
+                    self.mark_dirty();
+                }
+            }
+            Message::BeginStructureRename(selection) => {
+                let Some(item) = item_at_selection(&self.report, selection) else {
+                    return Task::none();
+                };
+                self.structure_rename = Some(selection);
+                self.structure_name_input = item_name_storage(item).clone();
+                self.structure_drag = None;
+                self.structure_drop_target = None;
+                self.selection = Some(selection);
+                self.selected_items = vec![selection];
+                self.active_band = Some(selection.band);
+                return iced::widget::operation::focus(iced::widget::Id::new(
+                    "structure-item-name",
+                ));
+            }
+            Message::BeginSelectedStructureRename => {
+                let Some(selection) = self.selection else {
+                    return Task::none();
+                };
+                let Some(item) = item_at_selection(&self.report, selection) else {
+                    return Task::none();
+                };
+                self.structure_rename = Some(selection);
+                self.structure_name_input = item_name_storage(item).clone();
+                self.properties_visible = true;
+                self.sidebar_tab = SidebarTab::Structure;
+                return iced::widget::operation::focus(iced::widget::Id::new(
+                    "structure-item-name",
+                ));
+            }
+            Message::StructureNameChanged(name) => self.structure_name_input = name,
+            Message::CommitStructureRename => {
+                let Some(selection) = self.structure_rename else {
+                    return Task::none();
+                };
+                let previous_report = self.report.clone();
+                match rename_report_item(&mut self.report, selection, &self.structure_name_input) {
+                    Ok(true) => {
+                        self.record_undo();
+                        if let Some(snapshot) = self.undo_stack.last_mut() {
+                            *snapshot = previous_report;
+                        }
+                        self.structure_rename = None;
+                        self.error_message = None;
+                        self.mark_dirty();
+                    }
+                    Ok(false) => self.structure_rename = None,
+                    Err(error) => self.set_error(error),
+                }
+            }
+            Message::CancelStructureRename => self.structure_rename = None,
+            Message::ModifiersChanged(modifiers) => self.keyboard_modifiers = modifiers,
             Message::ResizeProperties(dx) => {
                 self.properties_width =
                     (self.properties_width - dx).clamp(MIN_INSPECTOR_WIDTH, MAX_INSPECTOR_WIDTH);
@@ -654,4 +977,17 @@ impl DesignerApp {
 
         Task::none()
     }
+}
+
+pub(crate) fn message_closes_context_menu(message: &Message) -> bool {
+    matches!(
+        message,
+        Message::Copy
+            | Message::Paste
+            | Message::Cut
+            | Message::Delete
+            | Message::SelectAll
+            | Message::DismantleSelectedLayout
+            | Message::FitActiveBandToContents
+    )
 }

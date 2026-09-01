@@ -5,7 +5,7 @@ pub(super) fn append<'a>(
     item: &'a Item,
     mut content: iced::widget::Column<'a, Message>,
 ) -> iced::widget::Column<'a, Message> {
-    let Item::Text(text_item) = item else {
+    let Some(text_item) = first_text_item(item) else {
         return content;
     };
     content = content.push(property_group_header(

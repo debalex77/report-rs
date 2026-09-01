@@ -2,6 +2,31 @@ use super::*;
 use iced::widget::column;
 
 impl DesignerApp {
+    pub(super) fn layout_move_dialog(&self) -> Element<'_, Message> {
+        dialog_container(
+            column![
+                text("Move item from layout").size(20),
+                text("The selected item belongs to a layout. Choose how the operation should be performed.")
+                    .size(13),
+                button(text("Move entire layout").size(13))
+                    .width(Fill)
+                    .style(button::primary)
+                    .on_press(Message::MoveEntireLayout),
+                button(text("Dismantle layout and move item").size(13))
+                    .width(Fill)
+                    .style(common::style_button(5.0))
+                    .on_press(Message::DismantleLayoutAndMoveItem),
+                button(text("Cancel").size(13))
+                    .width(Fill)
+                    .style(common::style_button(5.0))
+                    .on_press(Message::CancelLayoutMove),
+            ]
+            .spacing(10)
+            .padding(18),
+            460.0,
+        )
+    }
+
     pub(super) fn settings_dialog(&self) -> Element<'_, Message> {
         let Some(settings) = &self.settings else {
             return Space::new().into();
@@ -245,6 +270,11 @@ impl DesignerApp {
     }
 
     pub(super) fn context_menu_popup(&self, position: Point) -> Element<'_, Message> {
+        let can_dismantle = self
+            .selection
+            .and_then(|selection| item_at_selection(&self.report, selection))
+            .is_some_and(|item| item_layout(item).is_some());
+        let can_fit_band = self.selection.is_none() && self.active_band.is_some();
         let actions = column![
             popup_menu_action(
                 "Copy        Ctrl+C",
@@ -261,6 +291,14 @@ impl DesignerApp {
             popup_menu_action(
                 "Delete",
                 self.selection.is_some().then_some(Message::Delete)
+            ),
+            popup_menu_action(
+                "Dismantle layout",
+                can_dismantle.then_some(Message::DismantleSelectedLayout)
+            ),
+            popup_menu_action(
+                "Fit band to contents",
+                can_fit_band.then_some(Message::FitActiveBandToContents)
             ),
             popup_menu_action(
                 "Select all  Ctrl+A",

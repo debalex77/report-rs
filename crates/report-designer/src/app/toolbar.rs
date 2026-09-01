@@ -3,32 +3,19 @@ use super::*;
 impl DesignerApp {
     pub(super) fn toolbar(&self) -> Element<'_, Message> {
         row![
-            button(text("Load").size(13))
-                .height(30)
-                .padding([5, 8])
-                .style(common::style_button(6.0))
-                .on_press(Message::Load),
-            button(text("Save").size(13))
-                .height(30)
-                .padding([5, 8])
-                .style(common::style_button(6.0))
-                .on_press(Message::Save),
-            button(text("Reload").size(13))
-                .height(30)
-                .padding([5, 8])
-                .style(common::style_button(6.0))
-                .on_press_maybe(self.path.is_some().then_some(Message::Reload)),
+            toolbar_text_button("New Report", Some(Message::NewReport)),
+            toolbar_text_button("Load", Some(Message::Load)),
+            toolbar_text_button("Save", Some(Message::Save)),
+            toolbar_text_button("Reload", self.path.is_some().then_some(Message::Reload)),
             toolbar_separator(),
-            button(text("Undo").size(13))
-                .height(30)
-                .padding([5, 8])
-                .style(common::style_button(6.0))
-                .on_press_maybe((!self.undo_stack.is_empty()).then_some(Message::Undo)),
-            button(text("Redo").size(13))
-                .height(30)
-                .padding([5, 8])
-                .style(common::style_button(6.0))
-                .on_press_maybe((!self.redo_stack.is_empty()).then_some(Message::Redo)),
+            toolbar_text_button(
+                "Undo",
+                (!self.undo_stack.is_empty()).then_some(Message::Undo)
+            ),
+            toolbar_text_button(
+                "Redo",
+                (!self.redo_stack.is_empty()).then_some(Message::Redo)
+            ),
             toolbar_separator(),
             alignment_button(
                 include_bytes!("../../../../assets/edit-select-all-symbolic.svg"),
@@ -37,26 +24,15 @@ impl DesignerApp {
             .on_press(Message::ToggleGuides),
             alignment_button(
                 include_bytes!("../../../../assets/preferences-system-symbolic.svg"),
-                true
+                false
             )
             .on_press(Message::OpenSettings),
-            button(container(text("−").size(14)).center(Fill))
-                .width(30)
-                .height(30)
-                .padding(0)
-                .style(common::style_button(8.0))
-                .on_press(Message::ZoomOut),
-            button(text(format!("{}%", (self.zoom * 100.0).round() as u32)))
-                .height(30)
-                .padding([5, 8])
-                .style(common::style_button(6.0))
-                .on_press(Message::ZoomReset),
-            button(container(text("+").size(14)).center(Fill))
-                .width(30)
-                .height(30)
-                .padding(0)
-                .style(common::style_button(6.0))
-                .on_press(Message::ZoomIn),
+            toolbar_square_button("−", Message::ZoomOut),
+            toolbar_text_button(
+                format!("{}%", (self.zoom * 100.0).round() as u32),
+                Some(Message::ZoomReset)
+            ),
+            toolbar_square_button("+", Message::ZoomIn),
             text(
                 self.path
                     .as_ref()
@@ -65,7 +41,7 @@ impl DesignerApp {
             )
             .size(13)
         ]
-        .spacing(10)
+        .spacing(6)
         .align_y(iced::Alignment::Center)
         .into()
     }

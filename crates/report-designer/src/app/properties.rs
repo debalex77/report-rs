@@ -44,15 +44,17 @@ impl DesignerApp {
 
     pub(super) fn update_selected_text(
         &mut self,
-        update: impl FnOnce(&mut report_core::model::TextItem),
+        mut update: impl FnMut(&mut report_core::model::TextItem),
     ) -> bool {
         let Some(selection) = self.selection else {
             return false;
         };
-        let Some(Item::Text(item)) = item_at_selection_mut(&mut self.report, selection) else {
+        let Some(item) = item_at_selection_mut(&mut self.report, selection) else {
             return false;
         };
-        update(item);
+        if update_text_items(item, &mut update) == 0 {
+            return false;
+        }
         propagate_auto_heights(&mut self.report);
         true
     }
@@ -109,12 +111,21 @@ impl DesignerApp {
         let Some(band) = page.bands.get_mut(selection.band) else {
             return false;
         };
-        let band_height = band.height.0;
         let Some(item) = band.items.get_mut(selection.top_index()) else {
             return false;
         };
+        let (_, y, _, height) = normalized_geometry(item);
+        let band_height = match field {
+            GeometryField::Y => band.height.0.max(value + height),
+            GeometryField::Height => band.height.0.max(y + value),
+            _ => band.height.0,
+        };
 
-        set_item_geometry(item, field, value, band_width, band_height)
+        let changed = set_item_geometry(item, field, value, band_width, band_height);
+        if changed {
+            grow_band_to_fit_items(&mut self.report, selection.band);
+        }
+        changed
     }
 
     pub(super) fn geometry_value(&self, selection: Selection, field: GeometryField) -> Option<f32> {

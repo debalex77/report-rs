@@ -1,10 +1,29 @@
 const MAX_SELECTION_DEPTH: usize = 8;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct Selection {
     pub(crate) band: usize,
     path: [usize; MAX_SELECTION_DEPTH],
     depth: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SidebarTab {
+    Properties,
+    Structure,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum StructureDropTarget {
+    Band(usize),
+    Item(Selection),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct PendingLayoutMove {
+    pub(crate) source: Selection,
+    pub(crate) layout: Selection,
+    pub(crate) target: StructureDropTarget,
 }
 
 impl Selection {
@@ -32,6 +51,54 @@ impl Selection {
 
     pub(crate) fn descendants(&self) -> &[usize] {
         &self.path[1..self.depth]
+    }
+
+    pub(crate) fn parent_indices(&self) -> &[usize] {
+        &self.path[..self.depth.saturating_sub(1)]
+    }
+
+    pub(crate) fn parent(mut self) -> Option<Self> {
+        if self.depth <= 1 {
+            return None;
+        }
+        self.depth -= 1;
+        Some(self)
+    }
+
+    pub(crate) const fn item_index(self) -> usize {
+        self.path[self.depth - 1]
+    }
+
+    pub(crate) fn with_item_index(mut self, index: usize) -> Self {
+        self.path[self.depth - 1] = index;
+        self
+    }
+
+    pub(crate) fn is_ancestor_of(self, other: Self) -> bool {
+        self.band == other.band
+            && self.depth < other.depth
+            && other.indices().starts_with(self.indices())
+    }
+
+    pub(crate) fn adjusted_after_removal(mut self, removed: Self) -> Option<Self> {
+        if self.band != removed.band {
+            return Some(self);
+        }
+        let parent_depth = removed.depth - 1;
+        if self.depth <= parent_depth
+            || self.indices()[..parent_depth] != removed.indices()[..parent_depth]
+        {
+            return Some(self);
+        }
+        let index = self.path[parent_depth];
+        let removed_index = removed.item_index();
+        if index == removed_index {
+            return None;
+        }
+        if index > removed_index {
+            self.path[parent_depth] -= 1;
+        }
+        Some(self)
     }
 
     pub(crate) fn push(mut self, index: usize) -> Option<Self> {

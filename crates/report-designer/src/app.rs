@@ -73,7 +73,7 @@ use settings::{DesignerSettings, MarginField, page_font_family};
 use shortcuts::keyboard_shortcuts;
 use state::{
     AppMenu, BorderSide, CollapsedGroups, DesignerTool, DragOperation, GeometryField, PaddingField,
-    PropertyGroup, ResizeHandle, Selection,
+    PendingLayoutMove, PropertyGroup, ResizeHandle, Selection, SidebarTab, StructureDropTarget,
 };
 use ui_helpers::*;
 
@@ -157,7 +157,7 @@ impl ShapeInputs {
 
 impl TextInputs {
     fn sync(&mut self, item: &Item) {
-        if let Item::Text(item) = item {
+        if let Some(item) = first_text_item(item) {
             self.text = text_editor::Content::with_text(&item.text);
             self.font_size = format_pt(item.font_size);
             self.font_family.clone_from(&item.font_family);
@@ -246,6 +246,15 @@ struct DesignerApp {
     canvas_interaction_active: bool,
     properties_visible: bool,
     properties_width: f32,
+    sidebar_tab: SidebarTab,
+    collapsed_structure_layouts: HashSet<Selection>,
+    structure_drag: Option<Selection>,
+    structure_drop_target: Option<StructureDropTarget>,
+    pending_layout_move: Option<PendingLayoutMove>,
+    structure_rename: Option<Selection>,
+    structure_name_input: String,
+    structure_selection_anchor: Option<Selection>,
+    keyboard_modifiers: keyboard::Modifiers,
     guides_visible: bool,
     error_message: Option<String>,
     settings: Option<DesignerSettings>,
@@ -311,6 +320,15 @@ impl Default for DesignerApp {
             canvas_interaction_active: false,
             properties_visible: true,
             properties_width: DEFAULT_INSPECTOR_WIDTH,
+            sidebar_tab: SidebarTab::Properties,
+            collapsed_structure_layouts: HashSet::new(),
+            structure_drag: None,
+            structure_drop_target: None,
+            pending_layout_move: None,
+            structure_rename: None,
+            structure_name_input: String::new(),
+            structure_selection_anchor: None,
+            keyboard_modifiers: keyboard::Modifiers::default(),
             guides_visible: true,
             error_message: None,
             settings: None,

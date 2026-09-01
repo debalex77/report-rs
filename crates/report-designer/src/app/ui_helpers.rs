@@ -51,17 +51,53 @@ pub(super) fn alignment_button(
                 }),
             }),
     )
-    .width(36)
+    .width(30)
     .height(30)
+    .padding(6)
     .style(move |theme, status| {
         let mut style = if selected {
             button::primary(theme, status)
         } else {
             button::secondary(theme, status)
         };
-        style.border.radius = iced::border::radius(5);
+        style.border.radius = iced::border::radius(7);
         style
     })
+}
+
+pub(super) fn toolbar_text_button(
+    label: impl Into<String>,
+    message: Option<Message>,
+) -> iced::widget::Button<'static, Message> {
+    button(text(label.into()).size(12))
+        .height(30)
+        .padding([5, 9])
+        .style(toolbar_button_style(false))
+        .on_press_maybe(message)
+}
+
+pub(super) fn toolbar_square_button(
+    label: &'static str,
+    message: Message,
+) -> iced::widget::Button<'static, Message> {
+    button(container(text(label).size(14)).center(Fill))
+        .width(30)
+        .height(30)
+        .padding(0)
+        .style(toolbar_button_style(false))
+        .on_press(message)
+}
+
+fn toolbar_button_style(selected: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
+    move |theme, status| {
+        let mut style = if selected {
+            button::primary(theme, status)
+        } else {
+            button::secondary(theme, status)
+        };
+        style.border.radius = iced::border::radius(7);
+        style
+    }
 }
 
 pub(super) fn status_icon_button(
@@ -266,6 +302,34 @@ pub(super) fn property_group_header(
         .padding([3, 6])
         .on_press(Message::ToggleGroup(group))
         .into()
+}
+
+pub(super) fn sidebar_tab_style(
+    selected: bool,
+) -> impl Fn(&Theme, button::Status) -> button::Style {
+    move |theme, status| {
+        let mut style = if selected {
+            button::primary(theme, status)
+        } else {
+            button::secondary(theme, status)
+        };
+        style.border.radius = iced::border::radius(7);
+        style
+    }
+}
+
+pub(super) fn sidebar_tabs_style(theme: &Theme) -> container::Style {
+    let mut background = theme.extended_palette().background.strong.color;
+    background.a = 0.45;
+    container::Style {
+        background: Some(Background::Color(background)),
+        border: iced::Border {
+            color: theme.extended_palette().background.strong.color,
+            width: 1.0,
+            radius: iced::border::radius(9),
+        },
+        ..Default::default()
+    }
 }
 
 pub(super) fn color_swatch_style(
