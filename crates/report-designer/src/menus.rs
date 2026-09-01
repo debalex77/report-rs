@@ -342,6 +342,11 @@ impl DesignerApp {
             ),
             toolbox_button(
                 include_bytes!("../../../assets/report-band-symbolic.svg"),
+                "DataHeader",
+                DesignerTool::DataHeader,
+            ),
+            toolbox_button(
+                include_bytes!("../../../assets/report-band-symbolic.svg"),
                 "DataBand",
                 DesignerTool::DataBand,
             ),

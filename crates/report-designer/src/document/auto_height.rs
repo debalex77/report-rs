@@ -1,6 +1,6 @@
 use super::*;
-use report_core::font_measurer::RealFontMeasurer;
-use report_core::text_layout::TextLayout;
+use report_core::font::measurer::RealFontMeasurer;
+use report_core::layout::text::TextLayout;
 use std::cell::RefCell;
 use std::collections::HashMap;
 

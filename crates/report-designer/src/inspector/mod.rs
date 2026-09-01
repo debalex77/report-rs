@@ -2,6 +2,7 @@ use super::*;
 
 mod appearance;
 mod band;
+mod data;
 mod geometry;
 mod image;
 mod layout;
@@ -25,6 +26,11 @@ impl DesignerApp {
                     .padding([5, 7])
                     .style(sidebar_tab_style(self.sidebar_tab == SidebarTab::Structure))
                     .on_press(Message::ShowSidebarTab(SidebarTab::Structure)),
+                button(text("Data").size(11))
+                    .width(Fill)
+                    .padding([5, 7])
+                    .style(sidebar_tab_style(self.sidebar_tab == SidebarTab::Data))
+                    .on_press(Message::ShowSidebarTab(SidebarTab::Data)),
             ]
             .spacing(4),
         )
@@ -33,6 +39,13 @@ impl DesignerApp {
         .style(sidebar_tabs_style);
         if self.sidebar_tab == SidebarTab::Structure {
             return container(iced::widget::column![tabs, structure::view(self)].spacing(5))
+                .padding(8)
+                .width(self.properties_width)
+                .height(Fill)
+                .into();
+        }
+        if self.sidebar_tab == SidebarTab::Data {
+            return container(iced::widget::column![tabs, data::view(self)].spacing(5))
                 .padding(8)
                 .width(self.properties_width)
                 .height(Fill)

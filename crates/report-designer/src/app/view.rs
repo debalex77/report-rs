@@ -17,6 +17,7 @@ impl DesignerApp {
             font_names: &self.font_names,
             guides_visible: self.guides_visible,
             images: &self.images,
+            data_field_drag: self.data_field_drag.is_some(),
         })
         .width(page.width().0 * scale + PAGE_MARGIN * 2.0)
         .height(page.height().0 * scale + PAGE_MARGIN * 2.0);
@@ -111,7 +112,43 @@ impl DesignerApp {
         } else {
             base
         };
-        if self.pending_layout_move.is_some() {
+        if self.pending_data_field_drop.is_some() {
+            let modal = opaque(
+                container(self.data_field_drop_dialog())
+                    .center(Fill)
+                    .width(Fill)
+                    .height(Fill)
+                    .style(modal_backdrop_style),
+            );
+            stack![base, modal].into()
+        } else if self.query_field_picker.is_some() {
+            let modal = opaque(
+                container(self.query_field_dialog())
+                    .center(Fill)
+                    .width(Fill)
+                    .height(Fill)
+                    .style(modal_backdrop_style),
+            );
+            stack![base, modal].into()
+        } else if self.data_query_editor.is_some() {
+            let modal = opaque(
+                container(self.data_query_dialog())
+                    .center(Fill)
+                    .width(Fill)
+                    .height(Fill)
+                    .style(modal_backdrop_style),
+            );
+            stack![base, modal].into()
+        } else if self.data_source_editor.is_some() {
+            let modal = opaque(
+                container(self.data_source_dialog())
+                    .center(Fill)
+                    .width(Fill)
+                    .height(Fill)
+                    .style(modal_backdrop_style),
+            );
+            stack![base, modal].into()
+        } else if self.pending_layout_move.is_some() {
             let modal = opaque(
                 container(self.layout_move_dialog())
                     .center(Fill)

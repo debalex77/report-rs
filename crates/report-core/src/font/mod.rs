@@ -1,5 +1,8 @@
 use crate::model::DEFAULT_FONT_FAMILY;
 
+pub mod measurer;
+pub mod resolver;
+
 /// Describes the font used to render a text item.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FontSpec {

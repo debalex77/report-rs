@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 
 use crate::font::FontSpec;
-use crate::text_layout::TextMeasurer;
+use crate::layout::text::TextMeasurer;
 use cosmic_text::{Attrs, Buffer, FontSystem, Metrics, Shaping, Style, Weight};
 
 /// DPI used internally when converting font sizes between

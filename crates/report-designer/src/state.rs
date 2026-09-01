@@ -11,6 +11,7 @@ pub(crate) struct Selection {
 pub(crate) enum SidebarTab {
     Properties,
     Structure,
+    Data,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -253,6 +254,7 @@ pub(crate) enum AppMenu {
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum DesignerTool {
     ReportHeader,
+    DataHeader,
     DataBand,
     ReportFooter,
     Text,

@@ -103,7 +103,16 @@ impl canvas::Program<Message> for DesignerCanvas<'_> {
                 Some(canvas::Action::publish(message).and_capture())
             }
             canvas::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
-                if state.dragging.take().is_some() {
+                if self.data_field_drag {
+                    state.dragging = None;
+                    state.last_position = None;
+                    let message = cursor
+                        .position_in(bounds)
+                        .and_then(|position| self.band_hit_test(position))
+                        .map(Message::DropDataFields)
+                        .unwrap_or(Message::CancelDataFieldDrag);
+                    Some(canvas::Action::publish(message).and_capture())
+                } else if state.dragging.take().is_some() {
                     state.last_position = None;
                     Some(canvas::Action::publish(Message::EndCanvasInteraction).and_capture())
                 } else {

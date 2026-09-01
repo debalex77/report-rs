@@ -3,16 +3,16 @@ use printpdf::{
     RawImage, RawImageData, RawImageFormat, TextItem, XObjectId, XObjectTransform,
 };
 
-use report_core::image_layout::calculate_image_placement;
-use report_core::image_loader::{ImageLoadError, load_image};
+use report_core::image::layout::calculate_image_placement;
+use report_core::image::loader::{ImageLoadError, load_image};
 use report_core::layout::{RenderedItem, RenderedPage};
 
-use report_core::text_layout::{mm_to_pt, pt_to_mm};
+use report_core::layout::text::{mm_to_pt, pt_to_mm};
 
 use report_core::model::{HorizontalAlign, VerticalAlign};
 
 use report_core::font::FontSpec;
-use report_core::font_resolver::SystemFontResolver;
+use report_core::font::resolver::SystemFontResolver;
 
 use std::collections::HashMap;
 use std::path::Path;

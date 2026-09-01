@@ -89,6 +89,39 @@ report-rs/
 
 Contains the core report model and layout engine.
 
+```text
+report-core/src/
+├── datasource/
+│   ├── context.rs
+│   ├── mod.rs
+│   ├── provider.rs
+│   └── sqlite.rs
+├── font/
+│   ├── mod.rs
+│   ├── measurer.rs
+│   └── resolver.rs
+├── image/
+│   ├── mod.rs
+│   ├── layout.rs
+│   └── loader.rs
+├── layout/
+│   ├── mod.rs
+│   └── text.rs
+├── model/
+│   ├── band.rs
+│   ├── item.rs
+│   ├── mod.rs
+│   ├── page.rs
+│   ├── report.rs
+│   ├── style.rs
+│   └── tests.rs
+├── common.rs
+└── lib.rs
+```
+
+The original flat module paths remain available as compatibility re-exports,
+while new code uses the grouped module paths shown above.
+
 Responsibilities include:
 
 - report and page model

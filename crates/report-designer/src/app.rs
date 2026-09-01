@@ -4,21 +4,22 @@ use std::path::PathBuf;
 use iced::mouse;
 use iced::widget::canvas::{self, Canvas, Frame, Geometry, Path};
 use iced::widget::{
-    Space, button, combo_box, container, mouse_area, opaque, row, scrollable, stack, svg, text,
-    text_editor, text_input,
+    Space, button, checkbox, combo_box, container, mouse_area, opaque, pick_list, row, scrollable,
+    stack, svg, text, text_editor, text_input, toggler,
 };
 use iced::{
     Background, Color, Element, Fill, Point, Rectangle, Renderer, Size, Task, Theme, keyboard,
 };
 
 use report_core::common;
+use report_core::datasource::{DataProvider, SqliteDataProvider};
 use report_core::font::FontSpec;
-use report_core::font_resolver::SystemFontResolver;
-use report_core::image_layout::calculate_image_placement;
+use report_core::font::resolver::SystemFontResolver;
+use report_core::image::layout::calculate_image_placement;
 use report_core::model::{
-    Band, BandKind, Border, Color as ReportColor, HorizontalAlign, ImageFit, ImageItem, Item,
-    LayoutItem, Margins, Mm, Orientation, Padding, Page, PageSize, RectangleItem, Report, TextItem,
-    VerticalAlign,
+    Band, BandKind, Border, Color as ReportColor, DataConnection, DataQuery, DataSourceDefinition,
+    HorizontalAlign, ImageFit, ImageItem, Item, LayoutItem, Margins, Mm, Orientation, Padding,
+    Page, PageSize, QuerySource, RectangleItem, Report, TextItem, ValueType, VerticalAlign,
 };
 
 #[cfg(test)]
@@ -26,6 +27,8 @@ use report_core::model::{
 mod app_tests;
 #[path = "clipboard.rs"]
 mod clipboard;
+#[path = "data_sources.rs"]
+mod data_sources;
 #[path = "canvas.rs"]
 mod designer_canvas;
 #[path = "document.rs"]
@@ -54,6 +57,8 @@ mod settings;
 mod shortcuts;
 #[path = "state.rs"]
 mod state;
+#[path = "table_templates.rs"]
+mod table_templates;
 #[path = "app/toolbar.rs"]
 mod toolbar;
 #[path = "app/ui_helpers.rs"]
@@ -62,10 +67,11 @@ mod ui_helpers;
 mod update;
 #[path = "app/view.rs"]
 mod view;
+use data_sources::{DataQueryEditor, DataSourceEditor, save_data_query, save_data_source};
 use document::*;
 use files::{
-    ensure_json_extension, report_directory, select_image_file, select_report_file,
-    select_report_save_file,
+    ensure_json_extension, launch_preview, report_directory, select_image_file, select_report_file,
+    select_report_save_file, select_sqlite_file,
 };
 use images::{DesignerImage, load_designer_images};
 use message::Message;
@@ -75,6 +81,7 @@ use state::{
     AppMenu, BorderSide, CollapsedGroups, DesignerTool, DragOperation, GeometryField, PaddingField,
     PendingLayoutMove, PropertyGroup, ResizeHandle, Selection, SidebarTab, StructureDropTarget,
 };
+use table_templates::{TableTemplate, load_table_templates, save_table_templates};
 use ui_helpers::*;
 
 // CSS pixels per millimeter at the standard 96 DPI screen scale.
@@ -135,11 +142,30 @@ struct BandInputs {
     data_source: String,
 }
 
+struct QueryFieldPicker {
+    query_name: String,
+    fields: Vec<String>,
+}
+
+#[derive(Clone)]
+struct DataFieldDrag {
+    query: String,
+    fields: Vec<String>,
+}
+
+struct PendingDataFieldDrop {
+    band: usize,
+    query: String,
+    columns: Vec<TableColumnSpec>,
+    center_table: bool,
+    template_name: String,
+}
+
 impl BandInputs {
     fn sync(&mut self, band: &Band) {
         self.height = format_mm(band.height.0);
         self.data_source = match &band.kind {
-            BandKind::Data { source } => source.clone(),
+            BandKind::Data { source } | BandKind::DataHeader { source, .. } => source.clone(),
             _ => String::new(),
         };
     }
@@ -258,6 +284,15 @@ struct DesignerApp {
     guides_visible: bool,
     error_message: Option<String>,
     settings: Option<DesignerSettings>,
+    data_source_editor: Option<DataSourceEditor>,
+    data_query_editor: Option<DataQueryEditor>,
+    query_fields: HashMap<String, Vec<String>>,
+    expanded_data_queries: HashSet<String>,
+    selected_data_fields: HashSet<(String, String)>,
+    data_field_drag: Option<DataFieldDrag>,
+    pending_data_field_drop: Option<PendingDataFieldDrop>,
+    table_templates: Vec<TableTemplate>,
+    query_field_picker: Option<QueryFieldPicker>,
     open_menu: Option<AppMenu>,
     about_visible: bool,
     toolbox_visible: bool,
@@ -332,6 +367,15 @@ impl Default for DesignerApp {
             guides_visible: true,
             error_message: None,
             settings: None,
+            data_source_editor: None,
+            data_query_editor: None,
+            query_fields: HashMap::new(),
+            expanded_data_queries: HashSet::new(),
+            selected_data_fields: HashSet::new(),
+            data_field_drag: None,
+            pending_data_field_drop: None,
+            table_templates: load_table_templates().unwrap_or_default(),
+            query_field_picker: None,
             open_menu: None,
             about_visible: false,
             toolbox_visible: true,

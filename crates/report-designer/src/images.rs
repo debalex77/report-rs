@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use iced::widget::image::Handle;
-use report_core::image_loader::load_image;
+use report_core::image::loader::load_image;
 use report_core::model::{Item, Report};
 
 #[derive(Clone)]

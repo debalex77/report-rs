@@ -23,14 +23,94 @@ pub(super) fn append<'a>(
     ));
     if !app.collapsed_groups.is_collapsed(PropertyGroup::TextValue) {
         if direct_text {
-            content = content.push(
-                text_editor(&app.text_inputs.text)
-                    .placeholder("Text / Value")
-                    .size(12)
-                    .padding(6)
-                    .height(84)
-                    .on_action(Message::TextEdited),
+            let value_types = [
+                "Text",
+                "Integer",
+                "Double",
+                "Boolean",
+                "Date",
+                "DateTime",
+                "Expression",
+            ]
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+            let main_query = app
+                .selection
+                .and_then(|selection| app.report.pages.first()?.bands.get(selection.band))
+                .and_then(|band| match &band.kind {
+                    BandKind::Data { source } => Some(source.as_str()),
+                    _ => None,
+                });
+            let mut queries = vec!["Main Query".to_string()];
+            queries.extend(
+                app.report
+                    .data_sources
+                    .iter()
+                    .flat_map(|source| source.queries.iter())
+                    .map(|query| query.name.clone())
+                    .filter(|name| Some(name.as_str()) != main_query),
             );
+            let selected_query = match &text_item.query_source {
+                QuerySource::Main => "Main Query".to_string(),
+                QuerySource::Named(name) => name.clone(),
+            };
+            let resolved_query = match &text_item.query_source {
+                QuerySource::Main => main_query,
+                QuerySource::Named(name) => Some(name.as_str()),
+            };
+            content = content
+                .push(text("Value type").size(11))
+                .push(
+                    pick_list(
+                        value_types,
+                        Some(value_type_name(text_item.value_type).to_string()),
+                        Message::ValueTypeChanged,
+                    )
+                    .text_size(12)
+                    .padding(4),
+                )
+                .push(text("Query").size(11))
+                .push(
+                    pick_list(queries, Some(selected_query), Message::QuerySourceChanged)
+                        .text_size(12)
+                        .padding(4),
+                );
+            let editor = text_editor(&app.text_inputs.text)
+                .placeholder("Text / Value")
+                .size(12)
+                .padding(6)
+                .height(84)
+                .on_action(Message::TextEdited);
+            if text_item.value_type == ValueType::Expression {
+                content = content.push(text("Expression").size(11));
+                if resolved_query.is_some() {
+                    let delegate = container(
+                        button(text("…").size(14))
+                            .width(30)
+                            .padding(3)
+                            .style(common::style_button(5.0))
+                            .on_press(Message::OpenQueryFieldPicker),
+                    )
+                    .padding(4)
+                    .align_right(Fill)
+                    .align_top(Fill);
+                    content = content.push(stack![editor, delegate]);
+                } else {
+                    content = content.push(editor);
+                }
+            } else {
+                content = content
+                    .push(text("Field").size(11))
+                    .push(
+                        text_input("Query field", text_item.field.as_deref().unwrap_or(""))
+                            .width(Fill)
+                            .size(12)
+                            .padding(4)
+                            .on_input(Message::QueryFieldChanged),
+                    )
+                    .push(editor);
+            }
         }
         content = content.push(
             row![
@@ -201,4 +281,16 @@ pub(super) fn append<'a>(
             );
     }
     content
+}
+
+fn value_type_name(value_type: ValueType) -> &'static str {
+    match value_type {
+        ValueType::Text => "Text",
+        ValueType::Integer => "Integer",
+        ValueType::Double => "Double",
+        ValueType::Boolean => "Boolean",
+        ValueType::Date => "Date",
+        ValueType::DateTime => "DateTime",
+        ValueType::Expression => "Expression",
+    }
 }

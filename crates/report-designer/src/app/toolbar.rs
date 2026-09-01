@@ -7,6 +7,7 @@ impl DesignerApp {
             toolbar_text_button("Load", Some(Message::Load)),
             toolbar_text_button("Save", Some(Message::Save)),
             toolbar_text_button("Reload", self.path.is_some().then_some(Message::Reload)),
+            toolbar_text_button("Preview", Some(Message::Preview)),
             toolbar_separator(),
             toolbar_text_button(
                 "Undo",

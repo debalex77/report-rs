@@ -116,14 +116,22 @@ impl DesignerCanvas<'_> {
         let content_width = self.page.printable_width().0 * self.scale;
         let mut band_y = PAGE_MARGIN + self.page.margins.top.0 * self.scale;
         for (index, band) in self.page.bands.iter().enumerate() {
+            let band_height = band.height.0 * self.scale;
             let bounds = Rectangle::new(
                 Point::new(content_x, band_y),
-                Size::new(content_width, band.height.0 * self.scale),
+                Size::new(content_width, band_height),
             );
-            if bounds.contains(position) {
+            let badge_bounds = Rectangle::new(
+                Point::new(
+                    PAGE_MARGIN - RULER_SIZE - RULER_GAP - BAND_BADGE_WIDTH - 8.0,
+                    band_y,
+                ),
+                Size::new(BAND_BADGE_WIDTH, band_height),
+            );
+            if bounds.contains(position) || badge_bounds.contains(position) {
                 return Some(index);
             }
-            band_y += band.height.0 * self.scale;
+            band_y += band_height;
         }
         None
     }

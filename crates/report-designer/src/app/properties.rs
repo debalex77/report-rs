@@ -26,19 +26,55 @@ impl DesignerApp {
     }
 
     pub(super) fn update_active_data_source(&mut self, source: String) -> bool {
+        let Some(active_band) = self.active_band else {
+            return false;
+        };
+        let Some(page) = self.report.pages.first_mut() else {
+            return false;
+        };
+        let is_data_pair = match page.bands.get(active_band).map(|band| &band.kind) {
+            Some(BandKind::Data { .. } | BandKind::DataHeader { .. }) => true,
+            _ => return false,
+        };
+        if !is_data_pair {
+            return false;
+        }
+        let mut changed = false;
+        for band in &mut page.bands {
+            if let BandKind::Data {
+                source: band_source,
+            }
+            | BandKind::DataHeader {
+                source: band_source,
+                ..
+            } = &mut band.kind
+                && *band_source != source
+            {
+                band_source.clone_from(&source);
+                changed = true;
+            }
+        }
+        changed
+    }
+
+    pub(super) fn update_active_data_header_repeat(&mut self, repeat: bool) -> bool {
         let Some(band) = self
             .active_band
             .and_then(|index| self.report.pages.first_mut()?.bands.get_mut(index))
         else {
             return false;
         };
-        let BandKind::Data {
-            source: data_source,
+        let BandKind::DataHeader {
+            repeat_on_each_page,
+            ..
         } = &mut band.kind
         else {
             return false;
         };
-        *data_source = source;
+        if *repeat_on_each_page == repeat {
+            return false;
+        }
+        *repeat_on_each_page = repeat;
         true
     }
 

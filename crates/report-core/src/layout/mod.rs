@@ -1,8 +1,12 @@
 use crate::datasource::{ReportContext, Row};
+use crate::expressions;
+use crate::layout::text::{ApproxTextMeasurer, TextLayout, TextLine, TextMeasurer};
 use crate::model::{
-    Band, Border, Color, HorizontalAlign, ImageFit, Item, Mm, Padding, Page, VerticalAlign,
+    Band, BandKind, Border, Color, HorizontalAlign, ImageFit, Item, Mm, Padding, Page,
+    VerticalAlign,
 };
-use crate::text_layout::{ApproxTextMeasurer, TextLayout, TextLine, TextMeasurer};
+
+pub mod text;
 
 #[derive(Debug, Clone)]
 /// A physical page produced by the layout pass.
@@ -138,6 +142,10 @@ impl LayoutEngine {
         context: &ReportContext,
         measurer: &M,
     ) -> Mm {
+        let current_query = match &band.kind {
+            BandKind::Data { source } => Some(source.as_str()),
+            _ => None,
+        };
         // The declared band height is a minimum. Fixed item bounds and text
         // auto-height may extend it.
         let mut height = band.height;
@@ -148,7 +156,12 @@ impl LayoutEngine {
                     let effective_height = if text.auto_height {
                         // Resolved values affect wrapping and must be known
                         // before the pagination decision is made.
-                        let resolved_text = Self::resolve_text(&text.text, row, context);
+                        let resolved_text = expressions::evaluate_for_query(
+                            &text.text,
+                            row,
+                            context,
+                            current_query,
+                        );
 
                         let font = text.font_spec();
 
@@ -215,12 +228,17 @@ impl LayoutEngine {
         measurer: &M,
         rendered_items: &mut Vec<RenderedItem>,
     ) {
+        let current_query = match &band.kind {
+            BandKind::Data { source } => Some(source.as_str()),
+            _ => None,
+        };
         for item in &band.items {
             match item {
                 Item::Text(text) => {
                     // Keep these choices identical to measure_band: pagination
                     // is correct only when measuring and rendering agree.
-                    let resolved_text = Self::resolve_text(&text.text, row, context);
+                    let resolved_text =
+                        expressions::evaluate_for_query(&text.text, row, context, current_query);
 
                     let font = text.font_spec();
 
@@ -331,34 +349,6 @@ impl LayoutEngine {
         }
     }
 
-    fn resolve_text(template: &str, row: Option<&Row>, context: &ReportContext) -> String {
-        let mut result = template.to_string();
-
-        // Resolve row fields first. If a field and a global variable share a
-        // name, the row replacement consumes that placeholder.
-        if let Some(row) = row {
-            for (key, value) in row {
-                let pattern = format!("${{{}}}", key);
-                result = result.replace(&pattern, &value.as_string());
-            }
-        }
-
-        // Global variables are available even when no data row is active.
-        for (key, value) in context.variables() {
-            let pattern = format!("${{{}}}", key);
-            result = result.replace(&pattern, &value.as_string());
-        }
-
-        // Parameters use an explicit namespace so caller-supplied input does
-        // not collide with row fields or global variables.
-        for (key, value) in context.parameters() {
-            let pattern = format!("${{parameter.{}}}", key);
-            result = result.replace(&pattern, &value.as_string());
-        }
-
-        result
-    }
-
     /// Lays out and paginates a page with caller-provided text metrics.
     ///
     /// One measurer is used for both passes so page-break decisions agree with
@@ -411,7 +401,9 @@ impl LayoutEngine {
         for band in &page.bands {
             if matches!(
                 band.kind,
-                crate::model::BandKind::PageHeader | crate::model::BandKind::PageFooter
+                crate::model::BandKind::PageHeader
+                    | crate::model::BandKind::PageFooter
+                    | crate::model::BandKind::DataHeader { .. }
             ) {
                 continue;
             }
@@ -421,6 +413,41 @@ impl LayoutEngine {
                     // Measure and render once per row because resolved values
                     // may wrap differently and produce different heights.
                     if let Some(rows) = context.table(source) {
+                        let data_header = page
+                            .bands
+                            .iter()
+                            .find(|candidate| {
+                                matches!(
+                                    &candidate.kind,
+                                    BandKind::DataHeader {
+                                        source: header_source,
+                                        ..
+                                    } if header_source == source
+                                )
+                            })
+                            // Backward-friendly fallback for a template whose
+                            // single DataHeader was created before its
+                            // DataBand query was selected.
+                            .or_else(|| {
+                                page.bands.iter().find(|candidate| {
+                                    matches!(candidate.kind, BandKind::DataHeader { .. })
+                                })
+                            });
+                        if !rows.is_empty()
+                            && let Some(header) = data_header
+                        {
+                            Self::render_band(
+                                header,
+                                page.margins.left,
+                                cursor_y,
+                                None,
+                                context,
+                                measurer,
+                                &mut rendered_items,
+                            );
+                            cursor_y =
+                                cursor_y + Self::measure_band(header, None, context, measurer);
+                        }
                         for row in rows {
                             let measured_height =
                                 Self::measure_band(band, Some(row), context, measurer);
@@ -467,6 +494,27 @@ impl LayoutEngine {
                                     );
 
                                     cursor_y = cursor_y + header_height;
+                                }
+                                if let Some(header) = data_header
+                                    && matches!(
+                                        header.kind,
+                                        BandKind::DataHeader {
+                                            repeat_on_each_page: true,
+                                            ..
+                                        }
+                                    )
+                                {
+                                    Self::render_band(
+                                        header,
+                                        page.margins.left,
+                                        cursor_y,
+                                        None,
+                                        context,
+                                        measurer,
+                                        &mut rendered_items,
+                                    );
+                                    cursor_y = cursor_y
+                                        + Self::measure_band(header, None, context, measurer);
                                 }
                             }
 
@@ -576,7 +624,8 @@ mod tests {
     use crate::font::FontSpec;
     use crate::model::{
         Band, BandKind, Color, HorizontalAlign, ImageFit, ImageItem, Item, Margins, Orientation,
-        Page, PageSize, TextItem, VerticalAlign, default_font_family, default_text_color,
+        Page, PageSize, QuerySource, TextItem, ValueType, VerticalAlign, default_font_family,
+        default_text_color,
     };
 
     #[test]
@@ -604,6 +653,12 @@ mod tests {
                     height: Mm(10.0),
 
                     text: "Test".to_string(),
+
+                    value_type: ValueType::Text,
+
+                    query_source: QuerySource::Main,
+
+                    field: None,
 
                     font_size: 12.0,
                     font_family: default_font_family(),
@@ -644,6 +699,56 @@ mod tests {
 
             _ => panic!("Expected text item"),
         }
+    }
+
+    #[test]
+    fn data_header_repeats_on_each_page_of_its_data_band() {
+        let line = |x2| {
+            Item::Line(crate::model::LineItem {
+                name: String::new(),
+                x1: Mm(0.0),
+                y1: Mm(0.0),
+                x2: Mm(x2),
+                y2: Mm(0.0),
+                width: Mm(0.5),
+            })
+        };
+        let page = Page {
+            size: PageSize::A4,
+            orientation: Orientation::Portrait,
+            margins: Margins {
+                left: Mm(10.0),
+                top: Mm(10.0),
+                right: Mm(10.0),
+                bottom: Mm(10.0),
+            },
+            bands: vec![
+                Band {
+                    kind: BandKind::DataHeader {
+                        source: "patients".to_string(),
+                        repeat_on_each_page: true,
+                    },
+                    height: Mm(10.0),
+                    items: vec![line(20.0)],
+                },
+                Band {
+                    kind: BandKind::Data {
+                        source: "patients".to_string(),
+                    },
+                    height: Mm(100.0),
+                    items: vec![line(40.0)],
+                },
+            ],
+        };
+        let mut context = ReportContext::new();
+        context.add_table("patients", (0..5).map(|_| Row::new()).collect());
+
+        let pages = LayoutEngine::render(&page, &context);
+
+        assert_eq!(pages.len(), 3);
+        assert!(pages.iter().all(|page| {
+            matches!(page.items.first(), Some(RenderedItem::Line { x2, .. }) if *x2 == Mm(30.0))
+        }));
     }
 
     #[test]
@@ -764,6 +869,12 @@ mod tests {
 
                         text: "HEADER".to_string(),
 
+                        value_type: ValueType::Text,
+
+                        query_source: QuerySource::Main,
+
+                        field: None,
+
                         font_size: 12.0,
                         font_family: default_font_family(),
 
@@ -810,6 +921,12 @@ mod tests {
                         height: Mm(10.0),
 
                         text: "FOOTER".to_string(),
+
+                        value_type: ValueType::Text,
+
+                        query_source: QuerySource::Main,
+
+                        field: None,
 
                         font_size: 10.0,
                         font_family: default_font_family(),
@@ -927,6 +1044,12 @@ mod tests {
 
                     text: "Pacient: ${name}".to_string(),
 
+                    value_type: ValueType::Text,
+
+                    query_source: QuerySource::Main,
+
+                    field: None,
+
                     font_size: 12.0,
                     font_family: default_font_family(),
 
@@ -1014,6 +1137,12 @@ mod tests {
 
                     text: "Medic: ${doctor_name}".to_string(),
 
+                    value_type: ValueType::Text,
+
+                    query_source: QuerySource::Main,
+
+                    field: None,
+
                     font_size: 12.0,
                     font_family: default_font_family(),
 
@@ -1081,6 +1210,9 @@ mod tests {
                     width: Mm(100.0),
                     height: Mm(10.0),
                     text: "Clinică: ${parameter.clinic}".to_string(),
+                    value_type: ValueType::Text,
+                    query_source: QuerySource::Main,
+                    field: None,
                     font_size: 12.0,
                     font_family: default_font_family(),
                     bold: false,
@@ -1136,6 +1268,12 @@ mod tests {
                         text: "Acesta este un text lung care trebuie sa ocupe mai multe randuri"
                             .to_string(),
 
+                        value_type: ValueType::Text,
+
+                        query_source: QuerySource::Main,
+
+                        field: None,
+
                         font_size: 12.0,
                         font_family: default_font_family(),
 
@@ -1173,6 +1311,12 @@ mod tests {
                         height: Mm(10.0),
 
                         text: "URMATORUL BAND".to_string(),
+
+                        value_type: ValueType::Text,
+
+                        query_source: QuerySource::Main,
+
+                        field: None,
 
                         font_size: 12.0,
                         font_family: default_font_family(),

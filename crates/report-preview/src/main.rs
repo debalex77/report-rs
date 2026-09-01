@@ -12,14 +12,14 @@ use iced::{
 
 use report_core::common;
 
-use report_core::datasource::{ReportContext, Row, Value};
+use report_core::datasource::{ReportContext, Row, Value, load_report_data_sources};
 use report_core::layout::{LayoutEngine, RenderedItem, RenderedPage};
 use report_core::model::{HorizontalAlign, Report, VerticalAlign};
 
-use report_core::font_measurer::RealFontMeasurer;
-use report_core::image_layout::calculate_image_placement;
-use report_core::image_loader::load_image;
-use report_core::text_layout::pt_to_mm;
+use report_core::font::measurer::RealFontMeasurer;
+use report_core::image::layout::calculate_image_placement;
+use report_core::image::loader::load_image;
+use report_core::layout::text::pt_to_mm;
 
 const PX_PER_MM: f32 = 96.0 / 25.4;
 const PAGE_MARGIN_PX: f32 = 40.0;
@@ -80,6 +80,7 @@ struct PreviewApp {
     debug_overlay: bool,
     images: HashMap<String, PreviewImage>,
     report_dir: PathBuf,
+    error_message: Option<String>,
 }
 
 fn load_preview_images(
@@ -134,18 +135,32 @@ fn load_preview_images(
 
 impl Default for PreviewApp {
     fn default() -> Self {
-        let path = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../examples/simple.report.json"
-        );
+        let path = std::env::args().nth(1).unwrap_or_else(|| {
+            concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../examples/simple.report.json"
+            )
+            .to_string()
+        });
 
         let measurer = RealFontMeasurer::new();
-        let report = Report::from_file(path).expect("Cannot load report");
-        let context = example_context();
-        let pages = LayoutEngine::render_with_measurer(&report.pages[0], &context, &measurer);
-        let report_dir = FsPath::new(path)
+        let report = Report::from_file(&path).expect("Cannot load report");
+        let report_dir = FsPath::new(&path)
             .parent()
             .expect("Report path should have a parent directory");
+        let mut context = if report.data_sources.is_empty() {
+            example_context()
+        } else {
+            ReportContext::new()
+        };
+        let error_message = load_report_data_sources(&report, report_dir, &mut context)
+            .err()
+            .map(|error| format!("Data source failed: {error}"));
+        let pages = report
+            .pages
+            .iter()
+            .flat_map(|page| LayoutEngine::render_with_measurer(page, &context, &measurer))
+            .collect::<Vec<_>>();
         let images = load_preview_images(&pages, report_dir);
 
         Self {
@@ -155,6 +170,7 @@ impl Default for PreviewApp {
             debug_overlay: false,
             images,
             report_dir: report_dir.to_path_buf(),
+            error_message,
         }
     }
 }
@@ -169,6 +185,7 @@ enum Message {
     ToggleDebug,
     ExportPdf,
     OpenPdf,
+    DismissError,
 }
 
 struct PageCanvas<'a> {
@@ -561,6 +578,8 @@ impl PreviewApp {
                     eprintln!("Cannot open PDF: {error}");
                 }
             }
+
+            Message::DismissError => self.error_message = None,
         }
 
         Task::none()
@@ -626,7 +645,24 @@ impl PreviewApp {
         .spacing(10)
         .align_y(iced::Alignment::Center);
 
-        column![container(toolbar).padding(10), viewport,].into()
+        let mut content = column![container(toolbar).padding(10)];
+        if let Some(error) = &self.error_message {
+            content = content.push(
+                container(
+                    row![
+                        text(format!("⚠  {error}")).size(12),
+                        iced::widget::Space::new().width(Fill),
+                        button("×").on_press(Message::DismissError),
+                    ]
+                    .spacing(8)
+                    .align_y(iced::Alignment::Center),
+                )
+                .padding([4, 8])
+                .width(Fill)
+                .style(container::danger),
+            );
+        }
+        content.push(viewport).into()
     }
 }
 

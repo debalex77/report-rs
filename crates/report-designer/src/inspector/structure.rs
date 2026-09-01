@@ -11,27 +11,41 @@ pub(super) fn view(app: &DesignerApp) -> Element<'_, Message> {
             let selected = app.selection.is_none() && app.active_band == Some(band_index);
             let drop_target = app.structure_drag.is_some()
                 && app.structure_drop_target == Some(StructureDropTarget::Band(band_index));
-            tree = tree.push(
-                mouse_area(
-                    container(
-                        row![
-                            Space::new().width(14),
-                            text("▾").size(10),
-                            structure_svg(
-                                include_bytes!("../../../../assets/report-band-symbolic.svg"),
-                                selected,
-                            ),
-                            text(band_name(&band.kind)).size(11),
-                        ]
-                        .spacing(4),
-                    )
-                    .width(Fill)
-                    .padding([3, 5])
-                    .style(move |theme| structure_node_style(theme, selected, drop_target)),
+            let band_node = mouse_area(
+                container(
+                    row![
+                        Space::new().width(14),
+                        text("▾").size(10),
+                        structure_svg(
+                            include_bytes!("../../../../assets/report-band-symbolic.svg"),
+                            selected,
+                        ),
+                        text(band_name(&band.kind)).size(11),
+                    ]
+                    .spacing(4),
                 )
-                .on_press(Message::SelectStructureBand(band_index))
-                .on_enter(Message::HoverStructureBand(band_index))
-                .on_release(Message::DropStructureItem),
+                .width(Fill)
+                .padding([3, 5])
+                .style(move |theme| structure_node_style(theme, selected, drop_target)),
+            )
+            .on_press(Message::SelectStructureBand(band_index))
+            .on_enter(Message::HoverStructureBand(band_index))
+            .on_release(Message::DropStructureItem);
+            tree = tree.push(
+                row![
+                    band_node,
+                    structure_band_move_button(
+                        include_bytes!("../../../../assets/go-top-symbolic.svg"),
+                        (band_index > 0).then_some(Message::MoveBandUp(band_index)),
+                    ),
+                    structure_band_move_button(
+                        include_bytes!("../../../../assets/go-bottom-symbolic.svg"),
+                        (band_index + 1 < page.bands.len())
+                            .then_some(Message::MoveBandDown(band_index)),
+                    ),
+                ]
+                .spacing(2)
+                .align_y(iced::Alignment::Center),
             );
             for (item_index, item) in band.items.iter().enumerate() {
                 let selection = Selection::top_level(band_index, item_index);
@@ -40,6 +54,25 @@ pub(super) fn view(app: &DesignerApp) -> Element<'_, Message> {
         }
     }
     scrollable(tree).height(Fill).into()
+}
+
+fn structure_band_move_button(
+    icon: &'static [u8],
+    message: Option<Message>,
+) -> iced::widget::Button<'static, Message> {
+    button(
+        svg(svg::Handle::from_memory(icon))
+            .width(13)
+            .height(13)
+            .style(|theme: &Theme, _status| svg::Style {
+                color: Some(theme.palette().text),
+            }),
+    )
+    .width(24)
+    .height(24)
+    .padding(5)
+    .style(button::text)
+    .on_press_maybe(message)
 }
 
 fn append_item<'a>(

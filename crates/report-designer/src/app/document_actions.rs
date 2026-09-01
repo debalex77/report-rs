@@ -23,6 +23,14 @@ impl DesignerApp {
         self.text_inputs = TextInputs::default();
         self.undo_stack.clear();
         self.redo_stack.clear();
+        self.data_source_editor = None;
+        self.data_query_editor = None;
+        self.query_fields.clear();
+        self.expanded_data_queries.clear();
+        self.selected_data_fields.clear();
+        self.data_field_drag = None;
+        self.pending_data_field_drop = None;
+        self.query_field_picker = None;
         self.error_message = None;
         self.status = "New blank report".to_string();
     }
@@ -36,8 +44,29 @@ impl DesignerApp {
     pub(super) fn use_tool(&mut self, tool: DesignerTool) {
         match tool {
             DesignerTool::ReportHeader => self.add_band(BandKind::ReportHeader),
+            DesignerTool::DataHeader => {
+                let source = self
+                    .report
+                    .data_sources
+                    .iter()
+                    .flat_map(|source| &source.queries)
+                    .next()
+                    .map(|query| query.name.clone())
+                    .unwrap_or_default();
+                self.add_band(BandKind::DataHeader {
+                    source,
+                    repeat_on_each_page: true,
+                });
+            }
             DesignerTool::DataBand => self.add_band(BandKind::Data {
-                source: "data".to_string(),
+                source: self
+                    .report
+                    .data_sources
+                    .iter()
+                    .flat_map(|source| &source.queries)
+                    .next()
+                    .map(|query| query.name.clone())
+                    .unwrap_or_default(),
             }),
             DesignerTool::ReportFooter => self.add_band(BandKind::ReportFooter),
             DesignerTool::Text => {
@@ -264,6 +293,14 @@ impl DesignerApp {
                 self.dirty = false;
                 self.error_message = None;
                 self.settings = None;
+                self.data_source_editor = None;
+                self.data_query_editor = None;
+                self.query_fields.clear();
+                self.expanded_data_queries.clear();
+                self.selected_data_fields.clear();
+                self.data_field_drag = None;
+                self.pending_data_field_drop = None;
+                self.query_field_picker = None;
                 self.new_report_confirmation_pending = false;
                 self.status = format!("Loaded {}", path.display());
                 self.remember_recent_report(&path);

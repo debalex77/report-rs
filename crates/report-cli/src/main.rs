@@ -1,5 +1,5 @@
 use report_core::datasource::{ReportContext, Row, Value};
-use report_core::font_measurer::RealFontMeasurer;
+use report_core::font::measurer::RealFontMeasurer;
 use report_core::layout::LayoutEngine;
 use report_core::model::Report;
 

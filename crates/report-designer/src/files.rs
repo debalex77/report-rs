@@ -1,5 +1,53 @@
 use std::path::{Path, PathBuf};
 
+use report_core::model::Report;
+
+pub(crate) fn launch_preview(report: &Report, report_path: Option<&Path>) -> Result<(), String> {
+    let directory = std::fs::canonicalize(report_directory(report_path))
+        .map_err(|error| format!("cannot resolve report directory: {error}"))?;
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| error.to_string())?
+        .as_nanos();
+    let preview_path = directory.join(format!(
+        ".report-rs-preview-{}-{nonce}.report.json",
+        std::process::id()
+    ));
+    report
+        .save_to_file(preview_path.to_string_lossy().as_ref())
+        .map_err(|error| format!("cannot write temporary report: {error}"))?;
+
+    let current_executable = std::env::current_exe()
+        .map_err(|error| format!("cannot locate Designer executable: {error}"))?;
+    let preview_executable = current_executable.with_file_name("report-preview");
+    // During development, Cargo may leave an older top-level binary while
+    // tests build only hashed executables in `target/debug/deps`. Running via
+    // Cargo guarantees Preview matches the current sources and accepts the
+    // temporary report path. Packaged release builds use the sibling binary.
+    let mut command = if !cfg!(debug_assertions) && preview_executable.is_file() {
+        std::process::Command::new(preview_executable)
+    } else {
+        let mut command = std::process::Command::new("cargo");
+        command
+            .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."))
+            .args(["run", "--quiet", "-p", "report-preview", "--"]);
+        command
+    };
+    let child = match command.arg(&preview_path).spawn() {
+        Ok(child) => child,
+        Err(error) => {
+            let _ = std::fs::remove_file(&preview_path);
+            return Err(format!("cannot start report-preview: {error}"));
+        }
+    };
+    std::thread::spawn(move || {
+        let mut child = child;
+        let _ = child.wait();
+        let _ = std::fs::remove_file(preview_path);
+    });
+    Ok(())
+}
+
 pub(crate) fn select_report_file() -> Result<Option<PathBuf>, String> {
     run_file_dialog(&[
         "--file-selection",
@@ -34,6 +82,14 @@ pub(crate) fn select_image_file() -> Result<Option<PathBuf>, String> {
         "--file-selection",
         "--title=Select image",
         "--file-filter=Images | *.png *.jpg *.jpeg",
+    ])
+}
+
+pub(crate) fn select_sqlite_file() -> Result<Option<PathBuf>, String> {
+    run_file_dialog(&[
+        "--file-selection",
+        "--title=Select SQLite database",
+        "--file-filter=SQLite database | *.sqlite *.sqlite3 *.db",
     ])
 }
 

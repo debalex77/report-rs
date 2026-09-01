@@ -10,12 +10,15 @@ mod items;
 mod layouts;
 #[path = "document/naming.rs"]
 mod naming;
+#[path = "document/table.rs"]
+mod table;
 
 pub(super) use auto_height::*;
 pub(super) use geometry::*;
 pub(super) use items::*;
 pub(super) use layouts::*;
 pub(super) use naming::*;
+pub(super) use table::*;
 
 pub(super) fn truncate(value: &str, max_chars: usize) -> String {
     let mut chars = value.chars();
@@ -30,6 +33,7 @@ pub(super) fn truncate(value: &str, max_chars: usize) -> String {
 pub(super) fn blank_report() -> Report {
     Report {
         name: "Untitled report".to_string(),
+        data_sources: Vec::new(),
         pages: vec![Page {
             size: PageSize::A4,
             orientation: Orientation::Portrait,
@@ -50,6 +54,7 @@ pub(super) fn same_band_kind(left: &BandKind, right: &BandKind) -> bool {
         (BandKind::ReportHeader, BandKind::ReportHeader)
             | (BandKind::PageHeader, BandKind::PageHeader)
             | (BandKind::Data { .. }, BandKind::Data { .. })
+            | (BandKind::DataHeader { .. }, BandKind::DataHeader { .. })
             | (BandKind::PageFooter, BandKind::PageFooter)
             | (BandKind::ReportFooter, BandKind::ReportFooter)
     )
@@ -202,14 +207,41 @@ pub(super) fn fit_band_to_contents(page: &mut Page, band_index: usize) -> bool {
     let Some(band) = page.bands.get(band_index) else {
         return false;
     };
-    let content_height = band
+    if band.items.is_empty() {
+        let delta = 5.0 - band.height.0;
+        return resize_band_height(page, band_index, delta);
+    }
+    let content_top = band
+        .items
+        .iter()
+        .map(|item| normalized_geometry(item).1)
+        .fold(f32::INFINITY, f32::min);
+    let content_bottom = band
         .items
         .iter()
         .map(|item| {
             let (_, y, _, height) = normalized_geometry(item);
             y + height
         })
-        .fold(5.0_f32, f32::max);
-    let delta = content_height - band.height.0;
-    resize_band_height(page, band_index, delta)
+        .fold(f32::NEG_INFINITY, f32::max);
+    let old_height = band.height.0;
+    let content_height = (content_bottom - content_top).max(5.0);
+
+    let moved = content_top.abs() > f32::EPSILON;
+    if moved && let Some(band) = page.bands.get_mut(band_index) {
+        for item in &mut band.items {
+            let (x, y, _, _) = normalized_geometry(item);
+            set_item_origin(item, x, y - content_top);
+        }
+    }
+    let resized = resize_band_height(page, band_index, content_height - old_height);
+    moved || resized
+}
+
+pub(super) fn move_band(page: &mut Page, from: usize, to: usize) -> bool {
+    if from >= page.bands.len() || to >= page.bands.len() || from == to {
+        return false;
+    }
+    page.bands.swap(from, to);
+    true
 }

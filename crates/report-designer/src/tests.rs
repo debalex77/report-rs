@@ -364,7 +364,7 @@ fn band_resize_does_not_shrink_below_its_items() {
 }
 
 #[test]
-fn fit_band_to_contents_shrinks_to_lowest_item_edge() {
+fn fit_band_to_contents_removes_top_and_bottom_space() {
     let mut report = blank_report();
     let mut first = new_text_item("DejaVu Sans".to_string());
     let mut second = new_text_item("DejaVu Sans".to_string());
@@ -377,7 +377,15 @@ fn fit_band_to_contents_shrinks_to_lowest_item_edge() {
     });
 
     assert!(fit_band_to_contents(&mut report.pages[0], 0));
-    assert_eq!(report.pages[0].bands[0].height, Mm(30.0));
+    assert_eq!(report.pages[0].bands[0].height, Mm(26.0));
+    assert_eq!(
+        normalized_geometry(&report.pages[0].bands[0].items[0]).1,
+        0.0
+    );
+    assert_eq!(
+        normalized_geometry(&report.pages[0].bands[0].items[1]).1,
+        14.0
+    );
 }
 
 #[test]
@@ -395,6 +403,32 @@ fn fit_empty_band_uses_minimum_height() {
 }
 
 #[test]
+fn move_band_swaps_neighbouring_bands() {
+    let mut report = blank_report();
+    report.pages[0].bands = vec![
+        Band {
+            kind: BandKind::ReportHeader,
+            height: Mm(10.0),
+            items: Vec::new(),
+        },
+        Band {
+            kind: BandKind::Data {
+                source: "patients".to_string(),
+            },
+            height: Mm(10.0),
+            items: Vec::new(),
+        },
+    ];
+
+    assert!(move_band(&mut report.pages[0], 1, 0));
+    assert!(matches!(
+        report.pages[0].bands[0].kind,
+        BandKind::Data { .. }
+    ));
+    assert!(!move_band(&mut report.pages[0], 0, 2));
+}
+
+#[test]
 fn passive_messages_do_not_close_context_menu() {
     assert!(!update::message_closes_context_menu(&Message::FontLoaded));
     assert!(!update::message_closes_context_menu(
@@ -408,6 +442,21 @@ fn context_menu_action_closes_context_menu() {
     assert!(update::message_closes_context_menu(
         &Message::FitActiveBandToContents
     ));
+}
+
+#[test]
+fn passive_messages_do_not_close_app_menu() {
+    assert!(!update::message_closes_app_menu(&Message::FontLoaded));
+    assert!(!update::message_closes_app_menu(
+        &Message::ModifiersChanged(keyboard::Modifiers::SHIFT)
+    ));
+}
+
+#[test]
+fn app_menu_action_closes_app_menu() {
+    assert!(update::message_closes_app_menu(&Message::Load));
+    assert!(update::message_closes_app_menu(&Message::Undo));
+    assert!(update::message_closes_app_menu(&Message::OpenAbout));
 }
 
 #[test]

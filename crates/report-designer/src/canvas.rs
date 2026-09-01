@@ -22,6 +22,7 @@ pub(crate) struct DesignerCanvas<'a> {
     pub(crate) font_names: &'a HashMap<String, &'static str>,
     pub(crate) guides_visible: bool,
     pub(crate) images: &'a HashMap<String, DesignerImage>,
+    pub(crate) data_field_drag: bool,
 }
 
 pub(crate) struct ColorWheel {
