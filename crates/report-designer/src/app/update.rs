@@ -453,6 +453,18 @@ impl DesignerApp {
                     return self.load_selected_font();
                 }
             }
+            Message::UnderlineChanged(value) => {
+                self.record_undo();
+                if self.update_selected_text(|text| text.underline = value) {
+                    self.mark_dirty();
+                }
+            }
+            Message::StrikeoutChanged(value) => {
+                self.record_undo();
+                if self.update_selected_text(|text| text.strikeout = value) {
+                    self.mark_dirty();
+                }
+            }
             Message::WordWrapChanged(value) => {
                 self.record_undo();
                 if self.update_selected_text(|item| item.word_wrap = value) {

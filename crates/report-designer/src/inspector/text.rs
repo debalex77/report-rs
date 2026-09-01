@@ -86,9 +86,10 @@ pub(super) fn append<'a>(
                 content = content.push(text("Expression").size(11));
                 if resolved_query.is_some() {
                     let delegate = container(
-                        button(text("…").size(14))
+                        button(container(text("•••").size(9)).center(Fill))
                             .width(30)
-                            .padding(3)
+                            .height(26)
+                            .padding(0)
                             .style(common::style_button(5.0))
                             .on_press(Message::OpenQueryFieldPicker),
                     )
@@ -114,22 +115,20 @@ pub(super) fn append<'a>(
         }
         content = content.push(
             row![
-                button(text("Word wrap").size(11))
-                    .style(if text_item.word_wrap {
-                        button::primary
-                    } else {
-                        button::secondary
-                    })
-                    .on_press(Message::WordWrapChanged(!text_item.word_wrap)),
-                button(text("Auto height").size(11))
-                    .style(if text_item.auto_height {
-                        button::primary
-                    } else {
-                        button::secondary
-                    })
-                    .on_press(Message::AutoHeightChanged(!text_item.auto_height)),
+                toggler(text_item.word_wrap)
+                    .label("Word wrap")
+                    .text_size(11)
+                    .size(16)
+                    .spacing(7)
+                    .on_toggle(Message::WordWrapChanged),
+                toggler(text_item.auto_height)
+                    .label("Auto height")
+                    .text_size(11)
+                    .size(16)
+                    .spacing(7)
+                    .on_toggle(Message::AutoHeightChanged),
             ]
-            .spacing(5),
+            .spacing(14),
         );
     }
 
@@ -177,6 +176,16 @@ pub(super) fn append<'a>(
                         text_item.italic,
                     )
                     .on_press(Message::ItalicChanged(!text_item.italic)),
+                    alignment_button(
+                        include_bytes!("../../../../assets/format-text-underline-symbolic.svg"),
+                        text_item.underline,
+                    )
+                    .on_press(Message::UnderlineChanged(!text_item.underline)),
+                    alignment_button(
+                        include_bytes!("../../../../assets/format-text-strikethrough-symbolic.svg"),
+                        text_item.strikeout,
+                    )
+                    .on_press(Message::StrikeoutChanged(!text_item.strikeout)),
                 ]
                 .spacing(4),
             );

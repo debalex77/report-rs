@@ -77,8 +77,49 @@ pub(super) fn toolbar_text_button(
     button(text(label.into()).size(12))
         .height(30)
         .padding([5, 9])
-        .style(toolbar_button_style(false))
+        .style(common::style_button(7.0))
         .on_press_maybe(message)
+}
+
+pub(super) fn toolbar_icon_text_button(
+    icon: &'static [u8],
+    label: &'static str,
+    message: Option<Message>,
+) -> iced::widget::Button<'static, Message> {
+    let content = row![
+        svg(svg::Handle::from_memory(icon))
+            .width(15)
+            .height(15)
+            .style(|_theme: &Theme, _status: svg::Status| svg::Style {
+                color: Some(Color::WHITE),
+            }),
+        text(label).size(11),
+    ]
+    .spacing(6)
+    .align_y(iced::Alignment::Center);
+    button(container(content).width(Fill).center_x(Fill).center_y(30))
+        .width(104)
+        .height(30)
+        .padding(0)
+        .style(common::style_button(7.0))
+        .on_press_maybe(message)
+}
+
+pub(super) fn path_frame<'a>(value: String) -> Element<'a, Message> {
+    container(text(value).size(11))
+        .padding([5, 9])
+        .style(|theme: &Theme| container::Style {
+            background: Some(Background::Color(
+                theme.extended_palette().background.weak.color,
+            )),
+            border: iced::Border {
+                color: theme.extended_palette().background.strong.color,
+                width: 1.0,
+                radius: iced::border::radius(7),
+            },
+            ..Default::default()
+        })
+        .into()
 }
 
 pub(super) fn toolbar_square_button(
@@ -89,20 +130,30 @@ pub(super) fn toolbar_square_button(
         .width(30)
         .height(30)
         .padding(0)
-        .style(toolbar_button_style(false))
+        .style(common::style_button(7.0))
         .on_press(message)
 }
 
-fn toolbar_button_style(selected: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
-    move |theme, status| {
-        let mut style = if selected {
-            button::primary(theme, status)
-        } else {
-            button::secondary(theme, status)
-        };
-        style.border.radius = iced::border::radius(7);
-        style
-    }
+pub(super) fn toolbar_icon_button(
+    icon: &'static [u8],
+    message: Message,
+) -> iced::widget::Button<'static, Message> {
+    button(
+        container(
+            svg(svg::Handle::from_memory(icon))
+                .width(16)
+                .height(16)
+                .style(|_theme: &Theme, _status: svg::Status| svg::Style {
+                    color: Some(Color::WHITE),
+                }),
+        )
+        .center(Fill),
+    )
+    .width(30)
+    .height(30)
+    .padding(0)
+    .style(common::style_button(7.0))
+    .on_press(message)
 }
 
 pub(super) fn status_icon_button(
@@ -133,6 +184,40 @@ pub(super) fn status_icon_button(
         style.border.radius = iced::border::radius(4);
         style
     })
+}
+
+pub(super) fn report_status_frame(dirty: bool) -> Element<'static, Message> {
+    let color = if dirty {
+        Color::from_rgb8(225, 78, 72)
+    } else {
+        Color::from_rgb8(66, 190, 112)
+    };
+    container(
+        row![
+            svg(svg::Handle::from_memory(include_bytes!(
+                "../../../../assets/status-symbolic.svg"
+            )))
+            .width(10)
+            .height(10)
+            .style(move |_theme: &Theme, _status: svg::Status| svg::Style { color: Some(color) }),
+            text(if dirty { "Modified" } else { "Saved" }).size(10),
+        ]
+        .spacing(5)
+        .align_y(iced::Alignment::Center),
+    )
+    .padding([3, 7])
+    .style(|theme: &Theme| container::Style {
+        background: Some(Background::Color(
+            theme.extended_palette().background.weak.color,
+        )),
+        border: iced::Border {
+            color: theme.extended_palette().background.strong.color,
+            width: 1.0,
+            radius: iced::border::radius(6),
+        },
+        ..Default::default()
+    })
+    .into()
 }
 
 pub(super) fn toolbar_separator() -> Element<'static, Message> {
@@ -234,7 +319,7 @@ pub(super) fn toolbox_button(
     .width(Fill)
     .height(30)
     .padding([5, 8])
-    .style(button::secondary)
+    .style(common::style_button(7.0))
     .on_press(Message::UseTool(tool))
 }
 
@@ -321,6 +406,41 @@ pub(super) fn sidebar_tab_style(
         style.border.radius = iced::border::radius(7);
         style
     }
+}
+
+pub(super) fn sidebar_tab_button(
+    icon: &'static [u8],
+    label: &'static str,
+    tab: SidebarTab,
+    selected: bool,
+) -> iced::widget::Button<'static, Message> {
+    button(
+        container(
+            row![
+                svg(svg::Handle::from_memory(icon))
+                    .width(13)
+                    .height(13)
+                    .style(move |theme: &Theme, _status: svg::Status| svg::Style {
+                        color: Some(if selected {
+                            Color::WHITE
+                        } else {
+                            theme.palette().text
+                        }),
+                    }),
+                text(label).size(11),
+            ]
+            .spacing(4)
+            .align_y(iced::Alignment::Center),
+        )
+        .width(Fill)
+        .center_x(Fill)
+        .center_y(28),
+    )
+    .width(Fill)
+    .height(28)
+    .padding(0)
+    .style(sidebar_tab_style(selected))
+    .on_press(Message::ShowSidebarTab(tab))
 }
 
 pub(super) fn sidebar_tabs_style(theme: &Theme) -> container::Style {

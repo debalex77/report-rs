@@ -130,6 +130,57 @@ pub(super) fn draw_item(
                         align_y,
                         ..Default::default()
                     });
+                    if text_item.underline || text_item.strikeout {
+                        let content_left = rect.x + text_item.padding.left.0 * scale;
+                        let content_right = rect.x + rect.width - text_item.padding.right.0 * scale;
+                        let content_top = rect.y + text_item.padding.top.0 * scale;
+                        let content_height = (rect.height
+                            - (text_item.padding.top.0 + text_item.padding.bottom.0) * scale)
+                            .max(0.0);
+                        let layout_height = layout.height * scale;
+                        let start_y = match text_item.vertical_align {
+                            VerticalAlign::Top => content_top,
+                            VerticalAlign::Center => {
+                                content_top + (content_height - layout_height) / 2.0
+                            }
+                            VerticalAlign::Bottom => content_top + content_height - layout_height,
+                        };
+                        let font_height =
+                            report_core::layout::text::pt_to_mm(text_item.font_size) * scale;
+                        let decoration_stroke = canvas::Stroke {
+                            width: 1.0,
+                            style: canvas::Style::Solid(report_color_to_iced(text_item.text_color)),
+                            ..Default::default()
+                        };
+                        for (index, line) in layout.lines.iter().enumerate() {
+                            let line_width = line.width * scale;
+                            let line_x = match text_item.horizontal_align {
+                                HorizontalAlign::Left => content_left,
+                                HorizontalAlign::Center => {
+                                    content_left + (content_right - content_left - line_width) / 2.0
+                                }
+                                HorizontalAlign::Right => content_right - line_width,
+                            };
+                            for factor in [
+                                text_item.underline.then_some(0.92),
+                                text_item.strikeout.then_some(0.55),
+                            ]
+                            .into_iter()
+                            .flatten()
+                            {
+                                let line_y = start_y
+                                    + layout.line_height * index as f32 * scale
+                                    + font_height * factor;
+                                frame.stroke(
+                                    &Path::line(
+                                        Point::new(line_x, line_y),
+                                        Point::new(line_x + line_width, line_y),
+                                    ),
+                                    decoration_stroke,
+                                );
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -458,7 +509,7 @@ pub(super) fn draw_rulers(
     );
 
     if let Some(bounds) = selected_bounds {
-        let shadow = Color::from_rgba8(225, 80, 55, 0.32);
+        let shadow = Color::from_rgba8(72, 210, 145, 0.42);
         frame.fill(
             &Path::rectangle(
                 Point::new(bounds.x, horizontal_y),

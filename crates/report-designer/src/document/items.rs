@@ -15,6 +15,8 @@ pub(crate) fn new_text_item(font_family: String) -> Item {
         font_family,
         bold: false,
         italic: false,
+        underline: false,
+        strikeout: false,
         text_color: ReportColor::BLACK,
         horizontal_align: HorizontalAlign::Left,
         vertical_align: VerticalAlign::Center,

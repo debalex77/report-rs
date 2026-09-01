@@ -14,23 +14,24 @@ impl DesignerApp {
     pub(super) fn inspector(&self) -> Element<'_, Message> {
         let tabs = container(
             row![
-                button(text("Properties").size(11))
-                    .width(Fill)
-                    .padding([5, 7])
-                    .style(sidebar_tab_style(
-                        self.sidebar_tab == SidebarTab::Properties
-                    ))
-                    .on_press(Message::ShowSidebarTab(SidebarTab::Properties)),
-                button(text("Structure").size(11))
-                    .width(Fill)
-                    .padding([5, 7])
-                    .style(sidebar_tab_style(self.sidebar_tab == SidebarTab::Structure))
-                    .on_press(Message::ShowSidebarTab(SidebarTab::Structure)),
-                button(text("Data").size(11))
-                    .width(Fill)
-                    .padding([5, 7])
-                    .style(sidebar_tab_style(self.sidebar_tab == SidebarTab::Data))
-                    .on_press(Message::ShowSidebarTab(SidebarTab::Data)),
+                sidebar_tab_button(
+                    include_bytes!("../../../../assets/properties-symbolic.svg"),
+                    "Properties",
+                    SidebarTab::Properties,
+                    self.sidebar_tab == SidebarTab::Properties,
+                ),
+                sidebar_tab_button(
+                    include_bytes!("../../../../assets/structure-symbolic.svg"),
+                    "Structure",
+                    SidebarTab::Structure,
+                    self.sidebar_tab == SidebarTab::Structure,
+                ),
+                sidebar_tab_button(
+                    include_bytes!("../../../../assets/data-symbolic.svg"),
+                    "Data",
+                    SidebarTab::Data,
+                    self.sidebar_tab == SidebarTab::Data,
+                ),
             ]
             .spacing(4),
         )

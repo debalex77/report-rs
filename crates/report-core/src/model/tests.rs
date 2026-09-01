@@ -44,6 +44,10 @@ fn serialize_report() {
                             bold: false,
                             italic: false,
 
+                            underline: false,
+
+                            strikeout: false,
+
                             text_color: default_text_color(),
 
                             horizontal_align: HorizontalAlign::Center,

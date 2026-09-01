@@ -37,6 +37,8 @@ pub enum RenderedItem {
         font_size: f32,
         bold: bool,
         italic: bool,
+        underline: bool,
+        strikeout: bool,
 
         text_color: Color,
 
@@ -278,6 +280,8 @@ impl LayoutEngine {
                         font_size: text.font_size,
                         bold: text.bold,
                         italic: text.italic,
+                        underline: text.underline,
+                        strikeout: text.strikeout,
 
                         text_color: text.text_color,
 
@@ -666,6 +670,10 @@ mod tests {
                     bold: false,
                     italic: false,
 
+                    underline: false,
+
+                    strikeout: false,
+
                     text_color: default_text_color(),
 
                     horizontal_align: HorizontalAlign::Left,
@@ -881,6 +889,10 @@ mod tests {
                         bold: false,
                         italic: false,
 
+                        underline: false,
+
+                        strikeout: false,
+
                         text_color: default_text_color(),
 
                         horizontal_align: HorizontalAlign::Left,
@@ -933,6 +945,10 @@ mod tests {
 
                         bold: false,
                         italic: false,
+
+                        underline: false,
+
+                        strikeout: false,
 
                         text_color: default_text_color(),
 
@@ -1056,6 +1072,10 @@ mod tests {
                     bold: false,
                     italic: false,
 
+                    underline: false,
+
+                    strikeout: false,
+
                     text_color: default_text_color(),
 
                     horizontal_align: HorizontalAlign::Left,
@@ -1149,6 +1169,10 @@ mod tests {
                     bold: false,
                     italic: false,
 
+                    underline: false,
+
+                    strikeout: false,
+
                     text_color: default_text_color(),
 
                     horizontal_align: HorizontalAlign::Left,
@@ -1217,6 +1241,8 @@ mod tests {
                     font_family: default_font_family(),
                     bold: false,
                     italic: false,
+                    underline: false,
+                    strikeout: false,
                     text_color: default_text_color(),
                     horizontal_align: HorizontalAlign::Left,
                     vertical_align: VerticalAlign::Top,
@@ -1280,6 +1306,10 @@ mod tests {
                         bold: false,
                         italic: false,
 
+                        underline: false,
+
+                        strikeout: false,
+
                         text_color: default_text_color(),
 
                         horizontal_align: HorizontalAlign::Left,
@@ -1323,6 +1353,10 @@ mod tests {
 
                         bold: false,
                         italic: false,
+
+                        underline: false,
+
+                        strikeout: false,
 
                         text_color: default_text_color(),
 

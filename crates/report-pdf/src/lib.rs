@@ -206,6 +206,8 @@ impl PdfRenderer {
                         font_family,
                         bold,
                         italic,
+                        underline,
+                        strikeout,
                         text_color,
                         lines,
                         line_height,
@@ -333,6 +335,49 @@ impl PdfRenderer {
                             });
 
                             ops.push(Op::EndTextSection);
+
+                            if *underline || *strikeout {
+                                ops.push(Op::SetOutlineColor {
+                                    col: printpdf::Color::Rgb(printpdf::Rgb::new(
+                                        text_color.r as f32 / 255.0,
+                                        text_color.g as f32 / 255.0,
+                                        text_color.b as f32 / 255.0,
+                                        None,
+                                    )),
+                                });
+                                ops.push(Op::SetOutlineThickness { pt: Pt(0.6) });
+                                for y_factor in
+                                    [underline.then_some(0.92), strikeout.then_some(0.55)]
+                                        .into_iter()
+                                        .flatten()
+                                {
+                                    let decoration_y = start_y
+                                        + *line_height * index as f32
+                                        + font_height_mm * y_factor;
+                                    let pdf_decoration_y = page.height.0 - decoration_y;
+                                    ops.push(Op::DrawLine {
+                                        line: Line {
+                                            points: vec![
+                                                LinePoint {
+                                                    p: Point {
+                                                        x: Mm(line_x).into(),
+                                                        y: Mm(pdf_decoration_y).into(),
+                                                    },
+                                                    bezier: false,
+                                                },
+                                                LinePoint {
+                                                    p: Point {
+                                                        x: Mm(line_x + line.width).into(),
+                                                        y: Mm(pdf_decoration_y).into(),
+                                                    },
+                                                    bezier: false,
+                                                },
+                                            ],
+                                            is_closed: false,
+                                        },
+                                    });
+                                }
+                            }
                         }
 
                         // Border - inversam Y la preview-ul coordonatele inverse

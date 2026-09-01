@@ -288,6 +288,8 @@ impl<'a, Message> canvas::Program<Message> for PageCanvas<'a> {
                     font_size,
                     bold,
                     italic,
+                    underline,
+                    strikeout,
                     text_color,
                     lines,
                     line_height,
@@ -405,6 +407,40 @@ impl<'a, Message> canvas::Program<Message> for PageCanvas<'a> {
                             align_x: text_align,
                             ..Default::default()
                         });
+                        if *underline || *strikeout {
+                            let decoration_left = match horizontal_align {
+                                HorizontalAlign::Left => text_x,
+                                HorizontalAlign::Center => text_x - line.width * scale / 2.0,
+                                HorizontalAlign::Right => text_x - line.width * scale,
+                            };
+                            let decoration_color = Color::from_rgba8(
+                                text_color.r,
+                                text_color.g,
+                                text_color.b,
+                                text_color.a as f32 / 255.0,
+                            );
+                            for y_factor in [underline.then_some(0.92), strikeout.then_some(0.55)]
+                                .into_iter()
+                                .flatten()
+                            {
+                                let decoration_y =
+                                    page_y + (line_y_mm + pt_to_mm(*font_size) * y_factor) * scale;
+                                frame.stroke(
+                                    &Path::line(
+                                        Point::new(decoration_left, decoration_y),
+                                        Point::new(
+                                            decoration_left + line.width * scale,
+                                            decoration_y,
+                                        ),
+                                    ),
+                                    canvas::Stroke {
+                                        width: 1.0,
+                                        style: canvas::Style::Solid(decoration_color),
+                                        ..Default::default()
+                                    },
+                                );
+                            }
+                        }
                     }
 
                     if let Some(border) = border {

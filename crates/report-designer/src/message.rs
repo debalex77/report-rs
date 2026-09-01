@@ -51,6 +51,8 @@ pub(crate) enum Message {
     FontFamilyChanged(String),
     BoldChanged(bool),
     ItalicChanged(bool),
+    UnderlineChanged(bool),
+    StrikeoutChanged(bool),
     WordWrapChanged(bool),
     AutoHeightChanged(bool),
     PaddingChanged(PaddingField, String),

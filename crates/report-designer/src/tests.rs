@@ -119,6 +119,8 @@ fn text_layout_options_json_round_trip() {
     };
     text.word_wrap = true;
     text.auto_height = true;
+    text.underline = true;
+    text.strikeout = true;
     text.padding = Padding {
         left: Mm(1.0),
         top: Mm(2.0),
@@ -155,6 +157,8 @@ fn text_layout_options_json_round_trip() {
 
     assert!(text.word_wrap);
     assert!(text.auto_height);
+    assert!(text.underline);
+    assert!(text.strikeout);
     assert_eq!(text.padding.left, Mm(1.0));
     assert_eq!(text.padding.top, Mm(2.0));
     assert_eq!(text.padding.right, Mm(3.0));

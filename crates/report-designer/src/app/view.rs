@@ -71,6 +71,7 @@ impl DesignerApp {
             .on_press(Message::ToggleToolbox),
             text(status).size(12),
             Space::new().width(Fill),
+            report_status_frame(self.dirty || self.path.is_none()),
             status_icon_button(
                 include_bytes!("../../../../assets/sidebar-show-right-symbolic.svg"),
                 self.properties_visible

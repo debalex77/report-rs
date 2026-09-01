@@ -262,7 +262,7 @@ impl DesignerApp {
                 .on_input(Message::DataQueryNameChanged),
             text("SQL").size(12),
             text_editor(&editor.sql)
-                .height(150)
+                .height(330)
                 .padding(7)
                 .on_action(Message::DataQuerySqlEdited),
         ]

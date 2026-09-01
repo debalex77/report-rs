@@ -39,6 +39,12 @@ pub struct TextItem {
     #[serde(default)]
     pub italic: bool,
 
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub underline: bool,
+
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub strikeout: bool,
+
     #[serde(default = "default_text_color")]
     pub text_color: Color,
 
@@ -56,6 +62,10 @@ pub struct TextItem {
 
     #[serde(default)]
     pub border: Option<Border>,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 /// How a text item's value is interpreted by expressions and formatters.
