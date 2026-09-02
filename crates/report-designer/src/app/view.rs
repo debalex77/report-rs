@@ -75,7 +75,16 @@ impl DesignerApp {
             container(
                 row![
                     text("Preparing preview").size(11),
-                    progress_bar(0.0..=100.0, 65.0).length(180).girth(6),
+                    progress_bar(
+                        0.0..=100.0,
+                        if self.preview_progress <= 100.0 {
+                            self.preview_progress
+                        } else {
+                            200.0 - self.preview_progress
+                        },
+                    )
+                    .length(180)
+                    .girth(6),
                 ]
                 .spacing(8)
                 .align_y(iced::Alignment::Center),

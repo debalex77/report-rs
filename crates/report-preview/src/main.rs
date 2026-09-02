@@ -5,7 +5,8 @@ use iced::mouse;
 use iced::widget::canvas::{self, Canvas, Frame, Geometry, Path};
 use iced::widget::image::Handle;
 use iced::widget::{
-    Space, button, column, container, opaque, row, scrollable, stack, text, text_input,
+    Space, button, column, container, opaque, progress_bar, row, scrollable, stack, text,
+    text_input,
 };
 use iced::{
     Color, Element, Fill, Font, Point, Rectangle, Renderer, Size, Task, Theme,
@@ -71,6 +72,7 @@ fn example_context() -> ReportContext {
     context
 }
 
+#[derive(Debug, Clone)]
 struct PreviewImage {
     handle: Handle,
     width: u32,
@@ -88,6 +90,9 @@ struct PreviewApp {
     error_message: Option<String>,
     parameter_values: Vec<String>,
     parameters_pending: bool,
+    processing: bool,
+    processing_duration: Option<std::time::Duration>,
+    progress: f32,
 }
 
 fn load_preview_images(
@@ -142,6 +147,7 @@ fn load_preview_images(
 
 impl Default for PreviewApp {
     fn default() -> Self {
+        let started = std::time::Instant::now();
         let path = std::env::args().nth(1).unwrap_or_else(|| {
             concat!(
                 env!("CARGO_MANIFEST_DIR"),
@@ -166,6 +172,16 @@ impl Default for PreviewApp {
             render_report(&report, report_dir, ReportContext::new())
         };
 
+        let page_count = pages.len();
+        let processing_duration = (!parameters_pending).then(|| started.elapsed());
+        if let Some(ready_path) = ready_file_argument() {
+            let summary = if parameters_pending {
+                "waiting for parameters".to_string()
+            } else {
+                format!("{page_count} pages")
+            };
+            let _ = std::fs::write(ready_path, summary);
+        }
         Self {
             report,
             pages,
@@ -177,6 +193,9 @@ impl Default for PreviewApp {
             error_message,
             parameter_values,
             parameters_pending,
+            processing: false,
+            processing_duration,
+            progress: 0.0,
         }
     }
 }
@@ -196,6 +215,36 @@ enum Message {
     ApplyParameters,
     OpenParameters,
     CloseParameters,
+    RenderFinished(RenderResult),
+    ProcessingTick,
+}
+
+#[derive(Debug, Clone)]
+struct RenderResult {
+    pages: Vec<RenderedPage>,
+    images: HashMap<String, PreviewImage>,
+    error: Option<String>,
+    duration: std::time::Duration,
+}
+
+fn ready_file_argument() -> Option<PathBuf> {
+    let arguments = std::env::args().collect::<Vec<_>>();
+    arguments
+        .windows(2)
+        .find(|arguments| arguments[0] == "--ready-file")
+        .map(|arguments| PathBuf::from(&arguments[1]))
+}
+
+fn format_duration(duration: std::time::Duration) -> String {
+    if duration.as_secs() >= 60 {
+        format!(
+            "{} min {} sec",
+            duration.as_secs() / 60,
+            duration.as_secs() % 60
+        )
+    } else {
+        format!("{:.1} sec", duration.as_secs_f32())
+    }
 }
 
 fn render_report(
@@ -688,15 +737,34 @@ impl PreviewApp {
                         }
                     }
                 }
-                let (pages, images, error) = render_report(&self.report, &self.report_dir, context);
-                self.pages = pages;
-                self.images = images;
-                self.error_message = error;
-                self.current_page = 0;
+                let report = self.report.clone();
+                let report_dir = self.report_dir.clone();
                 self.parameters_pending = false;
+                self.processing = true;
+                self.progress = 0.0;
+                self.error_message = None;
+                return Task::perform(
+                    async move {
+                        let started = std::time::Instant::now();
+                        let (pages, images, error) = render_report(&report, &report_dir, context);
+                        RenderResult {
+                            pages,
+                            images,
+                            error,
+                            duration: started.elapsed(),
+                        }
+                    },
+                    Message::RenderFinished,
+                );
             }
             Message::OpenParameters => {
                 self.error_message = None;
+                self.parameter_values = self
+                    .report
+                    .parameters
+                    .iter()
+                    .map(|parameter| parameter.default_value.clone().unwrap_or_default())
+                    .collect();
                 self.parameters_pending = true;
             }
             Message::CloseParameters => {
@@ -705,6 +773,17 @@ impl PreviewApp {
                     self.parameters_pending = false;
                 }
             }
+            Message::RenderFinished(result) => {
+                self.pages = result.pages;
+                self.images = result.images;
+                self.error_message = result.error;
+                self.current_page = 0;
+                self.processing = false;
+                self.processing_duration = Some(result.duration);
+            }
+            Message::ProcessingTick => {
+                self.progress = (self.progress + 3.0) % 200.0;
+            }
         }
 
         Task::none()
@@ -712,7 +791,9 @@ impl PreviewApp {
 
     fn view(&self) -> Element<'_, Message> {
         let base: Element<'_, Message> = if self.pages.is_empty() {
-            container(text(if self.parameters_pending {
+            container(text(if self.processing {
+                "Processing report data and rendering pages…"
+            } else if self.parameters_pending {
                 "Complete the report parameters to generate the preview"
             } else {
                 "No pages to preview"
@@ -722,6 +803,39 @@ impl PreviewApp {
         } else {
             self.preview_content()
         };
+        let status_content: Element<'_, Message> = if self.processing {
+            row![
+                text("Processing data and rendering pages…").size(11),
+                progress_bar(
+                    0.0..=100.0,
+                    if self.progress <= 100.0 {
+                        self.progress
+                    } else {
+                        200.0 - self.progress
+                    },
+                )
+                .length(220)
+                .girth(6),
+            ]
+            .spacing(10)
+            .align_y(iced::Alignment::Center)
+            .into()
+        } else if let Some(duration) = self.processing_duration {
+            text(format!(
+                "Generated {} pages in {}",
+                self.pages.len(),
+                format_duration(duration)
+            ))
+            .size(11)
+            .into()
+        } else {
+            text("Ready").size(11).into()
+        };
+        let base: Element<'_, Message> = column![
+            container(base).height(Fill),
+            container(status_content).padding([5, 10]).width(Fill),
+        ]
+        .into();
         if self.parameters_pending {
             stack![base, self.parameter_dialog()].into()
         } else {
@@ -914,11 +1028,46 @@ impl PreviewApp {
 }
 
 fn main() -> iced::Result {
+    let arguments = std::env::args().collect::<Vec<_>>();
+    if arguments.get(1).is_some_and(|value| value == "--benchmark") {
+        let Some(path) = arguments.get(2) else {
+            eprintln!("usage: report-preview --benchmark <report.json>");
+            return Ok(());
+        };
+        let started = std::time::Instant::now();
+        let report = match Report::from_file(path) {
+            Ok(report) => report,
+            Err(error) => {
+                eprintln!("Cannot load report: {error}");
+                return Ok(());
+            }
+        };
+        let report_dir = FsPath::new(path).parent().unwrap_or_else(|| FsPath::new("."));
+        let (pages, _, error) = render_report(&report, report_dir, ReportContext::new());
+        if let Some(error) = error {
+            eprintln!("{error}");
+        }
+        println!(
+            "Rendered {} pages in {}",
+            pages.len(),
+            format_duration(started.elapsed())
+        );
+        return Ok(());
+    }
+
     let font_bytes = std::fs::read("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
         .expect("Cannot load DejaVuSans.ttf");
 
     iced::application(PreviewApp::default, PreviewApp::update, PreviewApp::view)
         .title("report-rs Preview")
         .font(font_bytes)
+        .subscription(|app| {
+            if app.processing {
+                iced::time::every(std::time::Duration::from_millis(80))
+                    .map(|_| Message::ProcessingTick)
+            } else {
+                iced::Subscription::none()
+            }
+        })
         .run()
 }

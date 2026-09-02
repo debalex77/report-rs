@@ -1,6 +1,8 @@
 use crate::datasource::{ReportContext, Row, Value};
 use crate::expressions;
-use crate::layout::text::{ApproxTextMeasurer, TextLayout, TextLine, TextMeasurer};
+use crate::layout::text::{
+    ApproxTextMeasurer, DEFAULT_LINE_HEIGHT_FACTOR, TextLayout, TextLine, TextMeasurer, pt_to_mm,
+};
 use crate::model::{
     Band, BandKind, Border, Color, HorizontalAlign, ImageFit, Item, Mm, Padding, Page,
     VerticalAlign,
@@ -185,12 +187,14 @@ impl LayoutEngine {
         );
         let content_width = (text.width.0 - text.padding.left.0 - text.padding.right.0).max(0.0);
         let font = text.font_spec();
-        let text_layout = if text.word_wrap {
-            TextLayout::wrap(&resolved_text, &font, content_width, measurer)
+        let content_height = if text.word_wrap {
+            TextLayout::wrap(&resolved_text, &font, content_width, measurer).height
         } else {
-            TextLayout::single_line(&resolved_text, &font, measurer)
+            // A single line always has the same height for a given font. Its
+            // glyph width is irrelevant while calculating the band height.
+            pt_to_mm(font.size) * DEFAULT_LINE_HEIGHT_FACTOR
         };
-        let measured = Mm(text.padding.top.0 + text_layout.height + text.padding.bottom.0);
+        let measured = Mm(text.padding.top.0 + content_height + text.padding.bottom.0);
         Self::max_mm(text.height, measured)
     }
 
@@ -281,12 +285,38 @@ impl LayoutEngine {
 
                 let text_layout = if text.word_wrap {
                     TextLayout::wrap(&resolved_text, &font, content_width, measurer)
+                } else if matches!(text.horizontal_align, HorizontalAlign::Left)
+                    && !text.underline
+                    && !text.strikeout
+                {
+                    // Left-aligned undecorated text never consumes the line
+                    // width in either Preview or PDF. Avoid an expensive font
+                    // shaping pass for this common table-cell case.
+                    let line_height = pt_to_mm(font.size) * DEFAULT_LINE_HEIGHT_FACTOR;
+                    TextLayout {
+                        lines: vec![TextLine {
+                            text: resolved_text.clone(),
+                            width: 0.0,
+                        }],
+                        line_height,
+                        height: line_height,
+                    }
                 } else {
                     TextLayout::single_line(&resolved_text, &font, measurer)
                 };
 
-                let rendered_height =
-                    Self::measure_text_height(text, row, context, current_query, measurer);
+                // Reuse the layout calculated immediately above. Calling
+                // `measure_text_height` here used to resolve and wrap the same
+                // value a second time during rendering, after it had already
+                // been measured once for pagination.
+                let rendered_height = if text.auto_height {
+                    Self::max_mm(
+                        text.height,
+                        Mm(text.padding.top.0 + text_layout.height + text.padding.bottom.0),
+                    )
+                } else {
+                    text.height
+                };
                 let rendered_height =
                     Self::max_mm(rendered_height, minimum_height.unwrap_or(Mm(0.0)));
 

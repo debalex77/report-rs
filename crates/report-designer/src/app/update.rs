@@ -33,6 +33,7 @@ impl DesignerApp {
                     return Task::none();
                 }
                 self.preview_loading = true;
+                self.preview_progress = 0.0;
                 self.status = "Opening Preview…".to_string();
                 let report = self.report.clone();
                 let path = self.path.clone();
@@ -41,14 +42,49 @@ impl DesignerApp {
                     Message::PreviewLaunched,
                 );
             }
-            Message::PreviewLaunched(result) => {
-                self.preview_loading = false;
-                match result {
-                    Ok(()) => {
-                        self.error_message = None;
-                        self.status = "Preview opened".to_string();
+            Message::PreviewLaunched(result) => match result {
+                Ok((ready_path, started_at)) => {
+                    self.error_message = None;
+                    self.preview_ready_path = Some(ready_path);
+                    self.preview_started_at = Some(started_at);
+                }
+                Err(error) => {
+                    self.preview_loading = false;
+                    self.set_error(format!("Cannot open Preview: {error}"));
+                }
+            },
+            Message::PreviewProgressTick => {
+                self.preview_progress = (self.preview_progress + 3.0) % 200.0;
+                if let Some(path) = self.preview_ready_path.clone()
+                    && let Ok(contents) = std::fs::read_to_string(&path)
+                {
+                    let _ = std::fs::remove_file(&path);
+                    self.preview_ready_path = None;
+                    self.preview_loading = false;
+                    let summary = contents.trim();
+                    if let Some(error) = summary.strip_prefix("ERROR: ") {
+                        self.set_error(format!("Cannot open Preview: {error}"));
+                    } else {
+                        let elapsed = self
+                            .preview_started_at
+                            .take()
+                            .map(|started| started.elapsed())
+                            .unwrap_or_default();
+                        let elapsed = if elapsed.as_secs() >= 60 {
+                            format!(
+                                "{} min {} sec",
+                                elapsed.as_secs() / 60,
+                                elapsed.as_secs() % 60
+                            )
+                        } else {
+                            format!("{:.1} sec", elapsed.as_secs_f32())
+                        };
+                        self.status = if summary.is_empty() {
+                            format!("Preview opened in {elapsed}")
+                        } else {
+                            format!("Preview opened: {summary} in {elapsed}")
+                        };
                     }
-                    Err(error) => self.set_error(format!("Cannot open Preview: {error}")),
                 }
             }
             Message::ZoomIn => self.zoom = (self.zoom + 0.1).min(2.0),

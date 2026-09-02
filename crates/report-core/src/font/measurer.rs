@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::HashMap;
 
 use crate::font::FontSpec;
 use crate::layout::text::TextMeasurer;
@@ -28,6 +29,16 @@ pub struct RealFontMeasurer {
     // interior mutability because TextMeasurer::measure_width()
     // receives &self rather than &mut self.
     font_system: RefCell<FontSystem>,
+    width_cache: RefCell<HashMap<MeasurementKey, f32>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct MeasurementKey {
+    text: String,
+    family: String,
+    size_bits: u32,
+    bold: bool,
+    italic: bool,
 }
 
 impl RealFontMeasurer {
@@ -35,6 +46,7 @@ impl RealFontMeasurer {
     pub fn new() -> Self {
         Self {
             font_system: RefCell::new(FontSystem::new()),
+            width_cache: RefCell::new(HashMap::new()),
         }
     }
 }
@@ -49,6 +61,17 @@ impl TextMeasurer for RealFontMeasurer {
     /// Measures the rendered width of `text` in millimeters.
     fn measure_width(&self, text: &str, font: &FontSpec) -> f32 {
         use cosmic_text::Family;
+
+        let key = MeasurementKey {
+            text: text.to_string(),
+            family: font.family.clone(),
+            size_bits: font.size.to_bits(),
+            bold: font.bold,
+            italic: font.italic,
+        };
+        if let Some(width) = self.width_cache.borrow().get(&key) {
+            return *width;
+        }
 
         let mut font_system = self.font_system.borrow_mut();
 
@@ -100,7 +123,9 @@ impl TextMeasurer for RealFontMeasurer {
             .fold(0.0_f32, f32::max);
 
         // report-rs performs layout in millimeters.
-        px_to_mm(width_px)
+        let width = px_to_mm(width_px);
+        self.width_cache.borrow_mut().insert(key, width);
+        width
     }
 }
 
@@ -154,5 +179,17 @@ mod tests {
         println!("bold   = {bold_width} mm");
 
         assert_ne!(normal_width, bold_width);
+    }
+
+    #[test]
+    fn repeated_measurements_are_cached() {
+        let measurer = RealFontMeasurer::new();
+        let font = FontSpec::default();
+
+        let first = measurer.measure_width("Repeated report value", &font);
+        let second = measurer.measure_width("Repeated report value", &font);
+
+        assert_eq!(first, second);
+        assert_eq!(measurer.width_cache.borrow().len(), 1);
     }
 }

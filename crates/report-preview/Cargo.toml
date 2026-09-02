@@ -4,6 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-iced = { version = "0.14", features = ["canvas", "image-without-codecs"] }
+iced = { version = "0.14", features = ["canvas", "image-without-codecs", "smol"] }
 report-core = { path = "../report-core" }
 report-pdf = { path = "../report-pdf" }

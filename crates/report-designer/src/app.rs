@@ -359,6 +359,9 @@ struct DesignerApp {
     query_field_picker: Option<QueryFieldPicker>,
     function_picker_visible: bool,
     preview_loading: bool,
+    preview_progress: f32,
+    preview_ready_path: Option<PathBuf>,
+    preview_started_at: Option<std::time::Instant>,
     open_menu: Option<AppMenu>,
     about_visible: bool,
     toolbox_visible: bool,
@@ -458,6 +461,9 @@ impl Default for DesignerApp {
             query_field_picker: None,
             function_picker_visible: false,
             preview_loading: false,
+            preview_progress: 0.0,
+            preview_ready_path: None,
+            preview_started_at: None,
             open_menu: None,
             about_visible: false,
             toolbox_visible: true,
@@ -487,7 +493,13 @@ pub(crate) fn run() -> iced::Result {
             } else {
                 iced::Subscription::none()
             };
-            iced::Subscription::batch([keyboard_shortcuts(), timer])
+            let preview_timer = if app.preview_loading {
+                iced::time::every(std::time::Duration::from_millis(80))
+                    .map(|_| Message::PreviewProgressTick)
+            } else {
+                iced::Subscription::none()
+            };
+            iced::Subscription::batch([keyboard_shortcuts(), timer, preview_timer])
         })
         .run()
 }

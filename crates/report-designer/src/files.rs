@@ -2,7 +2,10 @@ use std::path::{Path, PathBuf};
 
 use report_core::model::Report;
 
-pub(crate) fn launch_preview(report: &Report, report_path: Option<&Path>) -> Result<(), String> {
+pub(crate) fn launch_preview(
+    report: &Report,
+    report_path: Option<&Path>,
+) -> Result<(PathBuf, std::time::Instant), String> {
     let directory = std::fs::canonicalize(report_directory(report_path))
         .map_err(|error| format!("cannot resolve report directory: {error}"))?;
     let nonce = std::time::SystemTime::now()
@@ -13,18 +16,33 @@ pub(crate) fn launch_preview(report: &Report, report_path: Option<&Path>) -> Res
         ".report-rs-preview-{}-{nonce}.report.json",
         std::process::id()
     ));
+    let ready_path = directory.join(format!(
+        ".report-rs-preview-{}-{nonce}.ready",
+        std::process::id()
+    ));
     report
         .save_to_file(preview_path.to_string_lossy().as_ref())
         .map_err(|error| format!("cannot write temporary report: {error}"))?;
 
     let current_executable = std::env::current_exe()
         .map_err(|error| format!("cannot locate Designer executable: {error}"))?;
-    let preview_executable = current_executable.with_file_name("report-preview");
+    let sibling_preview = current_executable.with_file_name("report-preview");
+    let release_preview = current_executable
+        .parent()
+        .and_then(Path::parent)
+        .map(|target| target.join("release").join("report-preview"));
+    let preview_executable = if cfg!(debug_assertions) {
+        release_preview
+            .filter(|path| path.is_file())
+            .unwrap_or(sibling_preview)
+    } else {
+        sibling_preview
+    };
     // During development, Cargo may leave an older top-level binary while
     // tests build only hashed executables in `target/debug/deps`. Running via
     // Cargo guarantees Preview matches the current sources and accepts the
     // temporary report path. Packaged release builds use the sibling binary.
-    let mut command = if !cfg!(debug_assertions) && preview_executable.is_file() {
+    let mut command = if preview_executable.is_file() {
         std::process::Command::new(preview_executable)
     } else {
         let mut command = std::process::Command::new("cargo");
@@ -33,19 +51,33 @@ pub(crate) fn launch_preview(report: &Report, report_path: Option<&Path>) -> Res
             .args(["run", "--quiet", "-p", "report-preview", "--"]);
         command
     };
-    let child = match command.arg(&preview_path).spawn() {
+    let started = std::time::Instant::now();
+    let child = match command
+        .arg(&preview_path)
+        .arg("--ready-file")
+        .arg(&ready_path)
+        .spawn()
+    {
         Ok(child) => child,
         Err(error) => {
             let _ = std::fs::remove_file(&preview_path);
             return Err(format!("cannot start report-preview: {error}"));
         }
     };
+    let ready_for_watcher = ready_path.clone();
     std::thread::spawn(move || {
         let mut child = child;
-        let _ = child.wait();
+        let status = child.wait();
+        if !ready_for_watcher.exists() {
+            let message = match status {
+                Ok(status) => format!("ERROR: report-preview exited before opening ({status})"),
+                Err(error) => format!("ERROR: cannot monitor report-preview: {error}"),
+            };
+            let _ = std::fs::write(&ready_for_watcher, message);
+        }
         let _ = std::fs::remove_file(preview_path);
     });
-    Ok(())
+    Ok((ready_path, started))
 }
 
 pub(crate) fn select_report_file() -> Result<Option<PathBuf>, String> {
