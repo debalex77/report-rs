@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-iced = { version = "0.14", features = ["canvas", "image-without-codecs", "svg"] }
+iced = { version = "0.14", features = ["advanced", "canvas", "image-without-codecs", "svg", "smol"] }
 report-core = { path = "../report-core" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"

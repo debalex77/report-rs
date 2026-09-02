@@ -5,7 +5,7 @@ pub(super) fn view(app: &DesignerApp) -> Element<'_, Message> {
         row![
             text("Data sources").size(16),
             Space::new().width(Fill),
-            button(text("+").size(14))
+            button(container(text("+").size(14)).center(Fill))
                 .width(28)
                 .height(26)
                 .padding(0)
@@ -25,13 +25,18 @@ pub(super) fn view(app: &DesignerApp) -> Element<'_, Message> {
             row![
                 text(format!("▾  {}", source.name)).size(12),
                 Space::new().width(Fill),
-                button(text("+ Query").size(11))
-                    .padding([3, 7])
-                    .style(button::secondary)
+                button(container(text("Query").size(11)).center(Fill))
+                    .width(58)
+                    .height(26)
+                    .padding(0)
+                    .style(common::style_button(6.0))
                     .on_press(Message::NewDataQuery(index)),
-                button(text("Edit").size(11))
-                    .padding([3, 7])
-                    .style(button::secondary)
+                Space::new().width(3),
+                button(container(text("Edit").size(11)).center(Fill))
+                    .width(48)
+                    .height(26)
+                    .padding(0)
+                    .style(common::style_button(6.0))
                     .on_press(Message::EditDataSource(index)),
             ]
             .align_y(iced::Alignment::Center),
@@ -54,6 +59,13 @@ pub(super) fn view(app: &DesignerApp) -> Element<'_, Message> {
                                 query: query_index,
                             }),
                         text(format!("◇ {}", query.name)).size(11).width(Fill),
+                        button(text("Filter / Sorting").size(10))
+                            .padding([3, 6])
+                            .style(button::text)
+                            .on_press(Message::OpenQueryRules {
+                                source: index,
+                                query: query_index,
+                            }),
                         button(text("Edit").size(10))
                             .padding([3, 6])
                             .style(button::text)
@@ -78,7 +90,6 @@ pub(super) fn view(app: &DesignerApp) -> Element<'_, Message> {
                         let selected = app.selected_data_fields.contains(&key);
                         let query_name = query.name.clone();
                         let field_name = field.clone();
-                        let drag_field_name = field.clone();
                         source_content = source_content.push(
                             row![
                                 Space::new().width(25),
@@ -91,42 +102,39 @@ pub(super) fn view(app: &DesignerApp) -> Element<'_, Message> {
                                         query: query_name.clone(),
                                         field: field_name.clone(),
                                     }),
-                                mouse_area(
-                                    container(text("⠿").size(11))
-                                        .width(18)
-                                        .height(18)
-                                        .align_x(iced::Alignment::Center)
-                                        .align_y(iced::Alignment::Center)
-                                        .style(|theme: &Theme| container::Style {
-                                            background: Some(Background::Color(
-                                                theme.extended_palette().background.weak.color,
-                                            )),
-                                            border: iced::Border {
-                                                color: theme
-                                                    .extended_palette()
-                                                    .background
-                                                    .strong
-                                                    .color,
-                                                width: 1.0,
-                                                radius: 4.0.into(),
-                                                ..Default::default()
-                                            },
-                                            text_color: Some(
-                                                theme.extended_palette().primary.strong.color,
-                                            ),
-                                            ..Default::default()
-                                        }),
-                                )
-                                .on_press(Message::BeginDataFieldDrag {
-                                    query: query.name.clone(),
-                                    field: drag_field_name,
-                                })
-                                .interaction(mouse::Interaction::Grab),
                             ]
                             .spacing(4)
                             .align_y(iced::Alignment::Center),
                         );
                     }
+                    let query_name = query.name.clone();
+                    let templates_query = query.name.clone();
+                    let actions = row![
+                        Space::new().width(Fill),
+                        tooltip(
+                            button(container(text("Templates").size(10)).center(Fill))
+                                .width(78)
+                                .height(25)
+                                .padding(0)
+                                .style(common::style_button(6.0))
+                                .on_press(Message::ToggleDataTemplates(templates_query)),
+                            text("Choose a saved table template").size(10),
+                            tooltip::Position::Bottom,
+                        ),
+                        tooltip(
+                            button(container(text("Generate").size(10)).center(Fill))
+                                .width(70)
+                                .height(25)
+                                .padding(0)
+                                .style(common::style_button(6.0))
+                                .on_press(Message::GenerateDataFields(query_name)),
+                            text("Generate a table from the selected query fields").size(10),
+                            tooltip::Position::Bottom,
+                        ),
+                    ]
+                    .spacing(6)
+                    .align_y(iced::Alignment::Center);
+                    source_content = source_content.push(actions);
                 }
             }
         }
@@ -143,4 +151,45 @@ pub(super) fn view(app: &DesignerApp) -> Element<'_, Message> {
     }
 
     scrollable(content.padding(5)).height(Fill).into()
+}
+
+pub(crate) fn templates_popup(
+    app: &DesignerApp,
+    query: &str,
+    position: Point,
+) -> Element<'static, Message> {
+    let mut actions = iced::widget::column![].spacing(1).width(iced::Shrink);
+    if app.table_templates.is_empty() {
+        actions = actions.push(container(text("No saved templates").size(11)).padding([6, 10]));
+    }
+    for (index, template) in app.table_templates.iter().enumerate() {
+        actions = actions.push(
+            button(text(template.name.clone()).size(11))
+                .height(28)
+                .padding([5, 10])
+                .style(button::text)
+                .on_press(Message::GenerateDataFieldsWithTemplate(
+                    query.to_string(),
+                    index,
+                )),
+        );
+    }
+    let popup = container(opaque(
+        container(actions).padding(4).style(popup_menu_style),
+    ))
+    .padding(iced::Padding {
+        top: position.y.max(0.0),
+        right: 0.0,
+        bottom: 0.0,
+        left: position.x.max(0.0),
+    })
+    .align_x(iced::alignment::Horizontal::Left)
+    .align_y(iced::alignment::Vertical::Top)
+    .width(Fill)
+    .height(Fill);
+    stack![
+        mouse_area(Space::new().width(Fill).height(Fill)).on_press(Message::CloseDataTemplates),
+        popup,
+    ]
+    .into()
 }

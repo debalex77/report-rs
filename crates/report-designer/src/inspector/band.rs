@@ -17,7 +17,7 @@ pub(super) fn append<'a>(
         .push(text(format!("Type: {}", band_name(&band.kind))).size(12))
         .push(
             row![
-                text("Order").size(11).width(62),
+                text("Order (up/down)").size(11).width(112),
                 alignment_button(
                     include_bytes!("../../../../assets/go-top-symbolic.svg"),
                     false,
@@ -27,7 +27,6 @@ pub(super) fn append<'a>(
                         .filter(|index| *index > 0)
                         .map(Message::MoveBandUp),
                 ),
-                text("Up").size(10),
                 alignment_button(
                     include_bytes!("../../../../assets/go-bottom-symbolic.svg"),
                     false,
@@ -37,7 +36,6 @@ pub(super) fn append<'a>(
                         .filter(|index| index + 1 < app.report.pages[0].bands.len())
                         .map(Message::MoveBandDown),
                 ),
-                text("Down").size(10),
             ]
             .spacing(5)
             .align_y(iced::Alignment::Center),

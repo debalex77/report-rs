@@ -103,6 +103,14 @@ impl DesignerApp {
                 .on_input(Message::SettingsFontChanged),
             )
             .push(
+                toggler(settings.auto_close_messages)
+                    .label("Auto-close errors and warnings after 15 seconds")
+                    .text_size(12)
+                    .size(17)
+                    .spacing(8)
+                    .on_toggle(Message::SettingsAutoCloseMessagesChanged),
+            )
+            .push(
                 row![
                     button(text("Cancel").size(13))
                         .style(common::style_button(5.0))
@@ -172,13 +180,34 @@ impl DesignerApp {
         let actions: Element<'_, Message> = match menu {
             AppMenu::File => {
                 let mut actions = column![
-                    popup_menu_action("New report", Some(Message::NewReport)),
-                    popup_menu_action("Load", Some(Message::Load)),
-                    popup_menu_action("Save             Ctrl+S", Some(Message::Save)),
-                    popup_menu_action("Save as…  Ctrl+Shift+S", Some(Message::SaveAs)),
-                    popup_menu_action("Reload", self.path.is_some().then_some(Message::Reload)),
+                    popup_menu_icon_action(
+                        include_bytes!("../../../assets/document-new-symbolic.svg"),
+                        "New report",
+                        Some(Message::NewReport)
+                    ),
+                    popup_menu_icon_action(
+                        include_bytes!("../../../assets/document-open-symbolic.svg"),
+                        "Load",
+                        Some(Message::Load)
+                    ),
+                    popup_menu_icon_action(
+                        include_bytes!("../../../assets/document-save-symbolic.svg"),
+                        "Save             Ctrl+S",
+                        Some(Message::Save)
+                    ),
+                    popup_menu_icon_action(
+                        include_bytes!("../../../assets/document-save-symbolic.svg"),
+                        "Save as…  Ctrl+Shift+S",
+                        Some(Message::SaveAs)
+                    ),
+                    popup_menu_icon_action(
+                        include_bytes!("../../../assets/view-refresh-symbolic.svg"),
+                        "Reload",
+                        self.path.is_some().then_some(Message::Reload)
+                    ),
                     popup_menu_separator(),
-                    popup_menu_action(
+                    popup_menu_icon_action(
+                        include_bytes!("../../../assets/document-open-symbolic.svg"),
                         if self.recent_reports_expanded {
                             "Recent reports  ▾"
                         } else {
@@ -190,53 +219,68 @@ impl DesignerApp {
                 if self.recent_reports_expanded {
                     for path in &self.recent_reports {
                         actions = actions.push(popup_menu_action_owned(
-                            format!("    {}", truncate(&path.display().to_string(), 34)),
+                            format!("    {}", path.display()),
                             Some(Message::OpenRecentReport(path.clone())),
                         ));
                     }
                 }
-                actions.spacing(2).width(230).into()
+                actions.spacing(2).width(510).into()
             }
             AppMenu::Edit => column![
-                popup_menu_action(
+                popup_menu_icon_action(
+                    include_bytes!("../../../assets/edit-undo-symbolic.svg"),
                     "Undo        Ctrl+Z",
                     (!self.undo_stack.is_empty()).then_some(Message::Undo),
                 ),
-                popup_menu_action(
+                popup_menu_icon_action(
+                    include_bytes!("../../../assets/edit-redo-symbolic.svg"),
                     "Redo        Ctrl+Y",
                     (!self.redo_stack.is_empty()).then_some(Message::Redo),
                 ),
                 popup_menu_separator(),
-                popup_menu_action(
+                popup_menu_icon_action(
+                    include_bytes!("../../../assets/edit-select-all-symbolic.svg"),
                     "Copy        Ctrl+C",
                     self.selection.is_some().then_some(Message::Copy),
                 ),
-                popup_menu_action(
+                popup_menu_icon_action(
+                    include_bytes!("../../../assets/document-open-symbolic.svg"),
                     "Paste       Ctrl+V",
                     self.clipboard_item.is_some().then_some(Message::Paste)
                 ),
-                popup_menu_action(
+                popup_menu_icon_action(
+                    include_bytes!("../../../assets/delete-item-symbolic.svg"),
                     "Cut           Ctrl+X",
                     self.selection.is_some().then_some(Message::Cut),
                 ),
-                popup_menu_action(
+                popup_menu_icon_action(
+                    include_bytes!("../../../assets/delete-item-symbolic.svg"),
                     "Delete",
                     self.selection.is_some().then_some(Message::Delete)
                 ),
-                popup_menu_action(
+                popup_menu_icon_action(
+                    include_bytes!("../../../assets/edit-select-all-symbolic.svg"),
                     "Select all  Ctrl+A",
                     self.active_band.is_some().then_some(Message::SelectAll),
                 ),
                 popup_menu_separator(),
-                popup_menu_action("Designer settings", Some(Message::OpenSettings)),
+                popup_menu_icon_action(
+                    include_bytes!("../../../assets/preferences-system-symbolic.svg"),
+                    "Designer settings",
+                    Some(Message::OpenSettings)
+                ),
             ]
             .spacing(2)
             .width(210)
             .into(),
-            AppMenu::Info => column![popup_menu_action("About", Some(Message::OpenAbout))]
-                .spacing(2)
-                .width(180)
-                .into(),
+            AppMenu::Info => column![popup_menu_icon_action(
+                include_bytes!("../../../assets/status-symbolic.svg"),
+                "About",
+                Some(Message::OpenAbout)
+            )]
+            .spacing(2)
+            .width(180)
+            .into(),
         };
 
         let left = match menu {
@@ -247,7 +291,7 @@ impl DesignerApp {
         let popup: Element<'_, Message> = container(opaque(
             container(actions)
                 .padding(5)
-                .width(if menu == AppMenu::File { 240 } else { 220 })
+                .width(if menu == AppMenu::File { 520 } else { 220 })
                 .style(popup_menu_style),
         ))
         .padding(iced::Padding {
@@ -334,7 +378,7 @@ impl DesignerApp {
 
     pub(super) fn toolbox(&self) -> Element<'_, Message> {
         let content = column![
-            text("Report bands").size(12),
+            toolbox_heading("Report bands"),
             toolbox_button(
                 include_bytes!("../../../assets/report-band-symbolic.svg"),
                 "ReportHeader",
@@ -356,7 +400,7 @@ impl DesignerApp {
                 DesignerTool::ReportFooter,
             ),
             toolbox_separator(),
-            text("Items").size(12),
+            toolbox_heading("Items"),
             toolbox_button(
                 include_bytes!("../../../assets/text-item-symbolic.svg"),
                 "TextItem",
@@ -373,7 +417,7 @@ impl DesignerApp {
                 DesignerTool::Shape,
             ),
             toolbox_separator(),
-            text("Layouts").size(12),
+            toolbox_heading("Layouts"),
             toolbox_button(
                 include_bytes!("../../../assets/horizontal-layout-symbolic.svg"),
                 "HorizontalLayout",

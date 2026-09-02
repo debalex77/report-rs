@@ -2,7 +2,7 @@ use super::*;
 
 mod appearance;
 mod band;
-mod data;
+pub(crate) mod data;
 mod geometry;
 mod image;
 mod layout;
@@ -74,12 +74,17 @@ impl DesignerApp {
                 content = content
                     .push(text(format!("Band: {}", band_name(&band.kind))).size(12))
                     .push(text(format!("Item: {}", item_type_name(item))).size(12))
-                    .push(text("Name").size(11))
                     .push(
-                        text_input("Item name", item_name(item))
-                            .size(12)
-                            .padding(4)
-                            .on_input(Message::ItemNameChanged),
+                        row![
+                            text("Name").size(11).width(52),
+                            text_input("Item name", item_name(item))
+                                .width(Fill)
+                                .size(12)
+                                .padding(4)
+                                .on_input(Message::ItemNameChanged)
+                        ]
+                        .spacing(6)
+                        .align_y(iced::Alignment::Center),
                     );
             }
             content = geometry::append(self, item, content);

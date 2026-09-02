@@ -21,9 +21,17 @@ impl DesignerApp {
         })
         .width(page.width().0 * scale + PAGE_MARGIN * 2.0)
         .height(page.height().0 * scale + PAGE_MARGIN * 2.0);
-        let workspace = scrollable(container(canvas).center_x(Fill))
-            .width(Fill)
-            .height(Fill);
+        let workspace = container(
+            scrollable(container(canvas).center_x(Fill))
+                .width(Fill)
+                .height(Fill),
+        )
+        .width(Fill)
+        .height(Fill)
+        .style(|_theme: &Theme| container::Style {
+            background: Some(Background::Color(Color::from_rgb8(196, 200, 205))),
+            ..Default::default()
+        });
         let menu_bar = row![
             menu_button("File", AppMenu::File, self.open_menu),
             menu_button("Edit", AppMenu::Edit, self.open_menu),
@@ -113,7 +121,16 @@ impl DesignerApp {
         } else {
             base
         };
-        if self.pending_data_field_drop.is_some() {
+        let content: Element<'_, Message> = if self.query_rules_editor.is_some() {
+            let modal = opaque(
+                container(self.query_rules_dialog())
+                    .center(Fill)
+                    .width(Fill)
+                    .height(Fill)
+                    .style(modal_backdrop_style),
+            );
+            stack![base, modal].into()
+        } else if self.pending_data_field_drop.is_some() {
             let modal = opaque(
                 container(self.data_field_drop_dialog())
                     .center(Fill)
@@ -181,6 +198,20 @@ impl DesignerApp {
             stack![base, modal].into()
         } else {
             base
+        };
+        if let Some(position) = self.query_text_menu_position {
+            stack![content, data_sources::query_text_context_popup(position)].into()
+        } else if let (Some(query), Some(position)) = (
+            self.open_data_templates.as_deref(),
+            self.data_templates_position,
+        ) {
+            stack![
+                content,
+                inspector::data::templates_popup(self, query, position)
+            ]
+            .into()
+        } else {
+            content
         }
     }
 }

@@ -4,22 +4,25 @@ use std::path::PathBuf;
 use iced::mouse;
 use iced::widget::canvas::{self, Canvas, Frame, Geometry, Path};
 use iced::widget::{
-    Space, button, checkbox, combo_box, container, mouse_area, opaque, pick_list, row, scrollable,
-    stack, svg, text, text_editor, text_input, toggler,
+    Space, button, checkbox, combo_box, container, mouse_area, opaque, pick_list, row, rule,
+    scrollable, stack, svg, text, text_editor, text_input, toggler, tooltip,
 };
 use iced::{
     Background, Color, Element, Fill, Point, Rectangle, Renderer, Size, Task, Theme, keyboard,
 };
 
 use report_core::common;
-use report_core::datasource::{DataProvider, SqliteDataProvider};
+use report_core::datasource::{
+    DataProvider, SqliteDataProvider, Value, apply_query_transformations,
+};
 use report_core::font::FontSpec;
 use report_core::font::resolver::SystemFontResolver;
 use report_core::image::layout::calculate_image_placement;
 use report_core::model::{
     Band, BandKind, Border, Color as ReportColor, DataConnection, DataQuery, DataSourceDefinition,
-    HorizontalAlign, ImageFit, ImageItem, Item, LayoutItem, Margins, Mm, Orientation, Padding,
-    Page, PageSize, QuerySource, RectangleItem, Report, TextItem, ValueType, VerticalAlign,
+    FilterOperator, HorizontalAlign, ImageFit, ImageItem, Item, LayoutItem, Margins, Mm,
+    Orientation, Padding, Page, PageSize, QueryFilter, QuerySort, QuerySource, RectangleItem,
+    Report, SortDirection, TextItem, ValueFormat, ValueType, VerticalAlign,
 };
 
 #[cfg(test)]
@@ -67,7 +70,10 @@ mod ui_helpers;
 mod update;
 #[path = "app/view.rs"]
 mod view;
-use data_sources::{DataQueryEditor, DataSourceEditor, save_data_query, save_data_source};
+use data_sources::{
+    DataQueryEditor, DataSourceEditor, QueryTextTarget, load_query_rules_preview,
+    parse_filter_operator, save_data_query, save_data_source,
+};
 use document::*;
 use files::{
     ensure_json_extension, launch_preview, report_directory, select_image_file, select_report_file,
@@ -129,6 +135,10 @@ struct TextInputs {
     padding_bottom: String,
     background: String,
     border_width: String,
+    decimal_places: String,
+    date_pattern: String,
+    value_prefix: String,
+    value_suffix: String,
 }
 
 #[derive(Default)]
@@ -145,6 +155,23 @@ struct BandInputs {
 struct QueryFieldPicker {
     query_name: String,
     fields: Vec<String>,
+}
+
+struct QueryRulesEditor {
+    source_index: usize,
+    query_index: usize,
+    query_name: String,
+    fields: Vec<String>,
+    filters: Vec<QueryFilter>,
+    sorts: Vec<QuerySort>,
+    preview: Option<QueryRulesPreview>,
+}
+
+struct QueryRulesPreview {
+    total_rows: usize,
+    filtered_rows: usize,
+    fields: Vec<String>,
+    rows: Vec<Vec<String>>,
 }
 
 #[derive(Clone)]
@@ -198,6 +225,14 @@ impl TextInputs {
                 .as_ref()
                 .map(|border| format_mm(border.width))
                 .unwrap_or_else(|| format_mm(0.5));
+            self.decimal_places = item
+                .value_format
+                .decimal_places
+                .map(|value| value.to_string())
+                .unwrap_or_default();
+            self.date_pattern = item.value_format.date_pattern.clone().unwrap_or_default();
+            self.value_prefix.clone_from(&item.value_format.prefix);
+            self.value_suffix.clone_from(&item.value_format.suffix);
         } else {
             *self = Self::default();
         }
@@ -283,12 +318,21 @@ struct DesignerApp {
     keyboard_modifiers: keyboard::Modifiers,
     guides_visible: bool,
     error_message: Option<String>,
+    auto_close_messages: bool,
     settings: Option<DesignerSettings>,
     data_source_editor: Option<DataSourceEditor>,
     data_query_editor: Option<DataQueryEditor>,
+    query_text_menu: Option<QueryTextTarget>,
+    query_text_menu_position: Option<Point>,
+    query_name_input_id: iced::widget::Id,
+    query_rules_editor: Option<QueryRulesEditor>,
     query_fields: HashMap<String, Vec<String>>,
+    query_field_types: HashMap<(String, String), ValueType>,
     expanded_data_queries: HashSet<String>,
     selected_data_fields: HashSet<(String, String)>,
+    open_data_templates: Option<String>,
+    data_templates_position: Option<Point>,
+    cursor_position: Point,
     data_field_drag: Option<DataFieldDrag>,
     pending_data_field_drop: Option<PendingDataFieldDrop>,
     table_templates: Vec<TableTemplate>,
@@ -366,12 +410,21 @@ impl Default for DesignerApp {
             keyboard_modifiers: keyboard::Modifiers::default(),
             guides_visible: true,
             error_message: None,
+            auto_close_messages: true,
             settings: None,
             data_source_editor: None,
             data_query_editor: None,
+            query_text_menu: None,
+            query_text_menu_position: None,
+            query_name_input_id: iced::widget::Id::unique(),
+            query_rules_editor: None,
             query_fields: HashMap::new(),
+            query_field_types: HashMap::new(),
             expanded_data_queries: HashSet::new(),
             selected_data_fields: HashSet::new(),
+            open_data_templates: None,
+            data_templates_position: None,
+            cursor_position: Point::ORIGIN,
             data_field_drag: None,
             pending_data_field_drop: None,
             table_templates: load_table_templates().unwrap_or_default(),
@@ -399,7 +452,14 @@ pub(crate) fn run() -> iced::Result {
             ")"
         ))
         .window_size(Size::new(1440.0, 850.0))
-        .subscription(|_| keyboard_shortcuts())
+        .subscription(|app| {
+            let timer = if app.auto_close_messages && app.error_message.is_some() {
+                iced::time::every(std::time::Duration::from_secs(15)).map(|_| Message::DismissError)
+            } else {
+                iced::Subscription::none()
+            };
+            iced::Subscription::batch([keyboard_shortcuts(), timer])
+        })
         .run()
 }
 

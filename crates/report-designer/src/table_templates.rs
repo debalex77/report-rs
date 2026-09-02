@@ -19,6 +19,22 @@ pub(crate) struct TableTemplateColumn {
     pub(crate) title: String,
     pub(crate) width: String,
     pub(crate) alignment: String,
+    #[serde(default = "default_expression")]
+    pub(crate) value_type: String,
+    #[serde(default)]
+    pub(crate) decimal_places: String,
+    #[serde(default)]
+    pub(crate) date_pattern: String,
+    #[serde(default)]
+    pub(crate) prefix: String,
+    #[serde(default)]
+    pub(crate) suffix: String,
+    #[serde(default)]
+    pub(crate) grouping: bool,
+}
+
+fn default_expression() -> String {
+    "Expression".to_string()
 }
 
 fn default_true() -> bool {
@@ -70,5 +86,29 @@ pub(crate) fn parse_alignment(alignment: &str) -> HorizontalAlign {
         "Center" => HorizontalAlign::Center,
         "Right" => HorizontalAlign::Right,
         _ => HorizontalAlign::Left,
+    }
+}
+
+pub(crate) fn value_type_name(value_type: ValueType) -> &'static str {
+    match value_type {
+        ValueType::Text => "Text",
+        ValueType::Integer => "Integer",
+        ValueType::Double => "Double",
+        ValueType::Boolean => "Boolean",
+        ValueType::Date => "Date",
+        ValueType::DateTime => "DateTime",
+        ValueType::Expression => "Expression",
+    }
+}
+
+pub(crate) fn parse_value_type(value_type: &str) -> ValueType {
+    match value_type {
+        "Integer" => ValueType::Integer,
+        "Double" => ValueType::Double,
+        "Boolean" => ValueType::Boolean,
+        "Date" => ValueType::Date,
+        "DateTime" => ValueType::DateTime,
+        "Text" => ValueType::Text,
+        _ => ValueType::Expression,
     }
 }

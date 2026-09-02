@@ -13,3 +13,4 @@ cosmic-text = "0.14"
 fontdb = "0.16.2"
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png"] }
 iced = "0.14.0"
+chrono = { version = "0.4.42", default-features = false, features = ["std"] }

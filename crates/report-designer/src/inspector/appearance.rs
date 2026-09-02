@@ -84,10 +84,26 @@ pub(super) fn append<'a>(
         content = content
             .push(
                 row![
-                    side_button("L", BorderSide::Left, border.left),
-                    side_button("T", BorderSide::Top, border.top),
-                    side_button("R", BorderSide::Right, border.right),
-                    side_button("B", BorderSide::Bottom, border.bottom),
+                    side_button(
+                        include_bytes!("../../../../assets/border-left-symbolic.svg"),
+                        BorderSide::Left,
+                        border.left
+                    ),
+                    side_button(
+                        include_bytes!("../../../../assets/border-top-symbolic.svg"),
+                        BorderSide::Top,
+                        border.top
+                    ),
+                    side_button(
+                        include_bytes!("../../../../assets/border-right-symbolic.svg"),
+                        BorderSide::Right,
+                        border.right
+                    ),
+                    side_button(
+                        include_bytes!("../../../../assets/border-bottom-symbolic.svg"),
+                        BorderSide::Bottom,
+                        border.bottom
+                    ),
                 ]
                 .spacing(4),
             )
@@ -130,17 +146,32 @@ fn padding_row<'a>(
 }
 
 fn side_button(
-    label: &'static str,
+    icon: &'static [u8],
     side: BorderSide,
     enabled: bool,
 ) -> iced::widget::Button<'static, Message> {
-    button(text(label).size(11))
-        .width(30)
-        .height(24)
-        .style(if enabled {
-            button::primary
-        } else {
-            button::secondary
-        })
-        .on_press(Message::BorderSideChanged(side, !enabled))
+    button(
+        container(
+            svg(svg::Handle::from_memory(icon))
+                .width(15)
+                .height(15)
+                .style(move |theme: &Theme, _status: svg::Status| svg::Style {
+                    color: Some(if enabled {
+                        Color::WHITE
+                    } else {
+                        theme.palette().text
+                    }),
+                }),
+        )
+        .center(Fill),
+    )
+    .width(30)
+    .height(24)
+    .padding(0)
+    .style(if enabled {
+        button::primary
+    } else {
+        button::secondary
+    })
+    .on_press(Message::BorderSideChanged(side, !enabled))
 }

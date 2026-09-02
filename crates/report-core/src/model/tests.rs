@@ -38,6 +38,8 @@ fn serialize_report() {
 
                             field: None,
 
+                            value_format: ValueFormat::default(),
+
                             font_size: 14.0,
                             font_family: default_font_family(),
 
@@ -146,6 +148,12 @@ fn query_bound_text_item_json_round_trip() {
         "value_type": "Double",
         "query_source": { "Named": "totals" },
         "field": "amount",
+        "value_format": {
+            "decimal_places": 2,
+            "prefix": "$ ",
+            "suffix": " MDL",
+            "grouping": true
+        },
         "font_size": 12.0,
         "horizontal_align": "Right",
         "vertical_align": "Center",
@@ -162,6 +170,10 @@ fn query_bound_text_item_json_round_trip() {
     assert_eq!(text.value_type, ValueType::Double);
     assert_eq!(text.query_source, QuerySource::Named("totals".to_string()));
     assert_eq!(text.field.as_deref(), Some("amount"));
+    assert_eq!(text.value_format.decimal_places, Some(2));
+    assert_eq!(text.value_format.prefix, "$ ");
+    assert_eq!(text.value_format.suffix, " MDL");
+    assert!(text.value_format.grouping);
 
     let serialized = serde_json::to_string(&item).unwrap();
     let _: Item = serde_json::from_str(&serialized).unwrap();
@@ -335,6 +347,8 @@ fn sqlite_data_source_json_round_trip() {
             queries: vec![DataQuery {
                 name: "orders".to_string(),
                 sql: "SELECT id, total FROM orders".to_string(),
+                filters: Vec::new(),
+                sorts: Vec::new(),
             }],
         }],
         pages: Vec::new(),

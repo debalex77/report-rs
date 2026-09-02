@@ -251,15 +251,6 @@ impl DesignerApp {
                     self.undo_stack.pop();
                 }
             }
-            Message::QueryFieldChanged(field) => {
-                self.record_undo();
-                let field = (!field.trim().is_empty()).then_some(field);
-                if self.update_selected_text(|item| item.field = field.clone()) {
-                    self.mark_dirty();
-                } else {
-                    self.undo_stack.pop();
-                }
-            }
             Message::OpenQueryFieldPicker => {
                 let Some(selection) = self.selection else {
                     return Task::none();
@@ -474,6 +465,46 @@ impl DesignerApp {
             Message::AutoHeightChanged(value) => {
                 self.record_undo();
                 if self.update_selected_text(|item| item.auto_height = value) {
+                    self.mark_dirty();
+                }
+            }
+            Message::ValueFormatDecimalChanged(value) => {
+                self.text_inputs.decimal_places.clone_from(&value);
+                if value.is_empty() || value.parse::<u8>().is_ok() {
+                    let decimals = value.parse::<u8>().ok();
+                    self.record_undo();
+                    if self.update_selected_text(|text| text.value_format.decimal_places = decimals)
+                    {
+                        self.mark_dirty();
+                    }
+                }
+            }
+            Message::ValueFormatDatePatternChanged(value) => {
+                self.text_inputs.date_pattern.clone_from(&value);
+                self.record_undo();
+                if self.update_selected_text(|text| {
+                    text.value_format.date_pattern = (!value.is_empty()).then(|| value.clone())
+                }) {
+                    self.mark_dirty();
+                }
+            }
+            Message::ValueFormatPrefixChanged(value) => {
+                self.text_inputs.value_prefix.clone_from(&value);
+                self.record_undo();
+                if self.update_selected_text(|text| text.value_format.prefix = value.clone()) {
+                    self.mark_dirty();
+                }
+            }
+            Message::ValueFormatSuffixChanged(value) => {
+                self.text_inputs.value_suffix.clone_from(&value);
+                self.record_undo();
+                if self.update_selected_text(|text| text.value_format.suffix = value.clone()) {
+                    self.mark_dirty();
+                }
+            }
+            Message::ValueFormatGroupingChanged(value) => {
+                self.record_undo();
+                if self.update_selected_text(|text| text.value_format.grouping = value) {
                     self.mark_dirty();
                 }
             }
@@ -898,6 +929,85 @@ impl DesignerApp {
                     editor.sql.perform(action);
                 }
             }
+            Message::OpenQueryTextMenu(target) => {
+                self.query_text_menu = Some(target);
+                self.query_text_menu_position = Some(self.cursor_position);
+            }
+            Message::CloseQueryTextMenu => {
+                self.query_text_menu = None;
+                self.query_text_menu_position = None;
+            }
+            Message::CopyQueryText => {
+                let text = self
+                    .data_query_editor
+                    .as_ref()
+                    .map(
+                        |editor| match self.query_text_menu.unwrap_or(QueryTextTarget::Sql) {
+                            QueryTextTarget::Name => editor.name.clone(),
+                            QueryTextTarget::Sql => {
+                                editor.sql.selection().unwrap_or_else(|| editor.sql.text())
+                            }
+                        },
+                    )
+                    .unwrap_or_default();
+                self.query_text_menu = None;
+                self.query_text_menu_position = None;
+                return iced::clipboard::write(text);
+            }
+            Message::CutQueryText => {
+                let Some(editor) = &mut self.data_query_editor else {
+                    return Task::none();
+                };
+                let text = match self.query_text_menu.unwrap_or(QueryTextTarget::Sql) {
+                    QueryTextTarget::Name => std::mem::take(&mut editor.name),
+                    QueryTextTarget::Sql => {
+                        let text = editor.sql.selection().unwrap_or_else(|| editor.sql.text());
+                        editor
+                            .sql
+                            .perform(text_editor::Action::Edit(text_editor::Edit::Delete));
+                        text
+                    }
+                };
+                self.query_text_menu = None;
+                self.query_text_menu_position = None;
+                return iced::clipboard::write(text);
+            }
+            Message::PasteQueryText => {
+                return iced::clipboard::read().map(Message::QueryTextPasted);
+            }
+            Message::SelectAllQueryText => {
+                if self.query_text_menu == Some(QueryTextTarget::Sql) {
+                    if let Some(editor) = &mut self.data_query_editor {
+                        editor.sql.perform(text_editor::Action::SelectAll);
+                    }
+                } else if self.query_text_menu == Some(QueryTextTarget::Name) {
+                    self.query_text_menu = None;
+                    self.query_text_menu_position = None;
+                    return iced::advanced::widget::operate(
+                        iced::advanced::widget::operation::text_input::select_all(
+                            self.query_name_input_id.clone(),
+                        ),
+                    );
+                }
+                self.query_text_menu = None;
+                self.query_text_menu_position = None;
+            }
+            Message::QueryTextPasted(value) => {
+                if let (Some(value), Some(editor)) = (value, &mut self.data_query_editor) {
+                    match self.query_text_menu.unwrap_or(QueryTextTarget::Sql) {
+                        QueryTextTarget::Name => editor.name = value,
+                        QueryTextTarget::Sql => {
+                            editor
+                                .sql
+                                .perform(text_editor::Action::Edit(text_editor::Edit::Paste(
+                                    std::sync::Arc::new(value),
+                                )))
+                        }
+                    }
+                }
+                self.query_text_menu = None;
+                self.query_text_menu_position = None;
+            }
             Message::SaveDataQuery => {
                 let Some(editor) = self.data_query_editor.take() else {
                     return Task::none();
@@ -919,6 +1029,211 @@ impl DesignerApp {
                 }
             }
             Message::CancelDataQueryEdit => self.data_query_editor = None,
+            Message::OpenQueryRules { source, query } => {
+                let Some(definition) = self
+                    .report
+                    .data_sources
+                    .get(source)
+                    .and_then(|source| source.queries.get(query))
+                    .cloned()
+                else {
+                    self.set_error("The query no longer exists");
+                    return Task::none();
+                };
+                match self.load_query_field_names(source, query) {
+                    Ok((query_name, fields, types)) => {
+                        self.query_field_types.extend(
+                            types.into_iter().map(|(field, value_type)| {
+                                ((query_name.clone(), field), value_type)
+                            }),
+                        );
+                        self.query_fields.insert(query_name.clone(), fields.clone());
+                        self.query_rules_editor = Some(QueryRulesEditor {
+                            source_index: source,
+                            query_index: query,
+                            query_name,
+                            fields,
+                            filters: definition.filters,
+                            sorts: definition.sorts,
+                            preview: None,
+                        });
+                        self.error_message = None;
+                    }
+                    Err(error) => self.set_error(format!("Cannot read query fields: {error}")),
+                }
+            }
+            Message::AddQueryFilter => {
+                if let Some(editor) = &mut self.query_rules_editor
+                    && let Some(field) = editor.fields.first()
+                {
+                    editor.filters.push(QueryFilter {
+                        field: field.clone(),
+                        operator: FilterOperator::Equal,
+                        value: String::new(),
+                        case_sensitive: false,
+                    });
+                    editor.preview = None;
+                }
+            }
+            Message::QueryFilterFieldChanged(index, field) => {
+                if let Some(filter) = self
+                    .query_rules_editor
+                    .as_mut()
+                    .and_then(|editor| editor.filters.get_mut(index))
+                {
+                    filter.field = field;
+                    if let Some(editor) = &mut self.query_rules_editor {
+                        editor.preview = None;
+                    }
+                }
+            }
+            Message::QueryFilterOperatorChanged(index, operator) => {
+                if let Some(filter) = self
+                    .query_rules_editor
+                    .as_mut()
+                    .and_then(|editor| editor.filters.get_mut(index))
+                {
+                    filter.operator = parse_filter_operator(&operator);
+                    if let Some(editor) = &mut self.query_rules_editor {
+                        editor.preview = None;
+                    }
+                }
+            }
+            Message::QueryFilterValueChanged(index, value) => {
+                if let Some(filter) = self
+                    .query_rules_editor
+                    .as_mut()
+                    .and_then(|editor| editor.filters.get_mut(index))
+                {
+                    filter.value = value;
+                    if let Some(editor) = &mut self.query_rules_editor {
+                        editor.preview = None;
+                    }
+                }
+            }
+            Message::QueryFilterCaseChanged(index, value) => {
+                if let Some(filter) = self
+                    .query_rules_editor
+                    .as_mut()
+                    .and_then(|editor| editor.filters.get_mut(index))
+                {
+                    filter.case_sensitive = value;
+                    if let Some(editor) = &mut self.query_rules_editor {
+                        editor.preview = None;
+                    }
+                }
+            }
+            Message::RemoveQueryFilter(index) => {
+                if let Some(editor) = &mut self.query_rules_editor
+                    && index < editor.filters.len()
+                {
+                    editor.filters.remove(index);
+                    editor.preview = None;
+                }
+            }
+            Message::AddQuerySort => {
+                if let Some(editor) = &mut self.query_rules_editor
+                    && let Some(field) = editor.fields.first()
+                {
+                    editor.sorts.push(QuerySort {
+                        field: field.clone(),
+                        direction: SortDirection::Ascending,
+                    });
+                    editor.preview = None;
+                }
+            }
+            Message::QuerySortFieldChanged(index, field) => {
+                if let Some(sort) = self
+                    .query_rules_editor
+                    .as_mut()
+                    .and_then(|editor| editor.sorts.get_mut(index))
+                {
+                    sort.field = field;
+                    if let Some(editor) = &mut self.query_rules_editor {
+                        editor.preview = None;
+                    }
+                }
+            }
+            Message::QuerySortDirectionChanged(index, direction) => {
+                if let Some(sort) = self
+                    .query_rules_editor
+                    .as_mut()
+                    .and_then(|editor| editor.sorts.get_mut(index))
+                {
+                    sort.direction = if direction == "Descending" {
+                        SortDirection::Descending
+                    } else {
+                        SortDirection::Ascending
+                    };
+                    if let Some(editor) = &mut self.query_rules_editor {
+                        editor.preview = None;
+                    }
+                }
+            }
+            Message::MoveQuerySortUp(index) => {
+                if index > 0
+                    && let Some(editor) = &mut self.query_rules_editor
+                    && index < editor.sorts.len()
+                {
+                    editor.sorts.swap(index, index - 1);
+                    editor.preview = None;
+                }
+            }
+            Message::MoveQuerySortDown(index) => {
+                if let Some(editor) = &mut self.query_rules_editor
+                    && index + 1 < editor.sorts.len()
+                {
+                    editor.sorts.swap(index, index + 1);
+                    editor.preview = None;
+                }
+            }
+            Message::RemoveQuerySort(index) => {
+                if let Some(editor) = &mut self.query_rules_editor
+                    && index < editor.sorts.len()
+                {
+                    editor.sorts.remove(index);
+                    editor.preview = None;
+                }
+            }
+            Message::PreviewQueryRules => {
+                let result = self.query_rules_editor.as_ref().map(|editor| {
+                    load_query_rules_preview(&self.report, self.path.as_deref(), editor)
+                });
+                match result {
+                    Some(Ok(preview)) => {
+                        if let Some(editor) = &mut self.query_rules_editor {
+                            editor.preview = Some(preview);
+                        }
+                        self.error_message = None;
+                    }
+                    Some(Err(error)) => self.set_error(format!("Cannot preview query: {error}")),
+                    None => {}
+                }
+            }
+            Message::SaveQueryRules => {
+                let Some(editor) = self.query_rules_editor.take() else {
+                    return Task::none();
+                };
+                let previous_report = self.report.clone();
+                let Some(query) = self
+                    .report
+                    .data_sources
+                    .get_mut(editor.source_index)
+                    .and_then(|source| source.queries.get_mut(editor.query_index))
+                else {
+                    self.set_error("The query no longer exists");
+                    return Task::none();
+                };
+                query.filters = editor.filters;
+                query.sorts = editor.sorts;
+                self.record_undo();
+                if let Some(snapshot) = self.undo_stack.last_mut() {
+                    *snapshot = previous_report;
+                }
+                self.error_message = None;
+                self.mark_dirty();
+            }
+            Message::CancelQueryRules => self.query_rules_editor = None,
             Message::ToggleDataQueryFields { source, query } => {
                 let Some(query_name) = self
                     .report
@@ -931,7 +1246,10 @@ impl DesignerApp {
                 };
                 if !self.expanded_data_queries.remove(&query_name) {
                     match self.load_query_field_names(source, query) {
-                        Ok((query_name, fields)) => {
+                        Ok((query_name, fields, types)) => {
+                            self.query_field_types.extend(types.into_iter().map(
+                                |(field, value_type)| ((query_name.clone(), field), value_type),
+                            ));
                             self.query_fields.insert(query_name.clone(), fields);
                             self.expanded_data_queries.insert(query_name);
                             self.error_message = None;
@@ -946,28 +1264,114 @@ impl DesignerApp {
                     self.selected_data_fields.insert(key);
                 }
             }
-            Message::BeginDataFieldDrag { query, field } => {
-                let key = (query.clone(), field.clone());
-                if !self.selected_data_fields.contains(&key) {
-                    self.selected_data_fields.clear();
-                    self.selected_data_fields.insert(key);
+            Message::ToggleDataTemplates(query) => {
+                if self.open_data_templates.as_deref() == Some(query.as_str()) {
+                    self.open_data_templates = None;
+                    self.data_templates_position = None;
+                } else {
+                    self.open_data_templates = Some(query);
+                    self.data_templates_position = Some(self.cursor_position);
                 }
+            }
+            Message::CloseDataTemplates => {
+                self.open_data_templates = None;
+                self.data_templates_position = None;
+            }
+            Message::GenerateDataFields(query) => {
                 let fields = self
                     .query_fields
                     .get(&query)
                     .map(|fields| {
-                        fields
+                        let selected = fields
                             .iter()
                             .filter(|field| {
                                 self.selected_data_fields
                                     .contains(&(query.clone(), (*field).clone()))
                             })
                             .cloned()
-                            .collect::<Vec<_>>()
+                            .collect::<Vec<_>>();
+                        if selected.is_empty() {
+                            fields.clone()
+                        } else {
+                            selected
+                        }
                     })
-                    .filter(|fields| !fields.is_empty())
-                    .unwrap_or_else(|| vec![field]);
+                    .unwrap_or_default();
+                if fields.is_empty() {
+                    self.set_error("Expand the query and select at least one field first");
+                    return Task::none();
+                }
+                let target =
+                    self.active_band
+                        .filter(|index| {
+                            self.report
+                                .pages
+                                .first()
+                                .and_then(|page| page.bands.get(*index))
+                                .is_some_and(|band| {
+                                    matches!(
+                                        band.kind,
+                                        BandKind::Data { .. } | BandKind::DataHeader { .. }
+                                    )
+                                })
+                        })
+                        .or_else(|| {
+                            self.report.pages.first()?.bands.iter().position(|band| {
+                                match &band.kind {
+                                    BandKind::Data { source }
+                                    | BandKind::DataHeader { source, .. } => source == &query,
+                                    _ => false,
+                                }
+                            })
+                        })
+                        .or_else(|| {
+                            self.report.pages.first()?.bands.iter().position(|band| {
+                                matches!(
+                                    band.kind,
+                                    BandKind::Data { .. } | BandKind::DataHeader { .. }
+                                )
+                            })
+                        });
+                let Some(target) = target else {
+                    self.set_error("Add a DataBand or DataHeader before generating the table");
+                    return Task::none();
+                };
+                self.open_data_templates = None;
+                self.data_templates_position = None;
                 self.data_field_drag = Some(DataFieldDrag { query, fields });
+                return self.update(Message::DropDataFields(target));
+            }
+            Message::GenerateDataFieldsWithTemplate(query, index) => {
+                let Some(template) = self.table_templates.get(index) else {
+                    return Task::none();
+                };
+                let available = self.query_fields.get(&query).cloned().unwrap_or_default();
+                let missing = template
+                    .columns
+                    .iter()
+                    .filter(|column| !available.contains(&column.field))
+                    .map(|column| column.field.clone())
+                    .collect::<Vec<_>>();
+                if !missing.is_empty() {
+                    self.set_error(format!(
+                        "The query does not contain the template fields: {}",
+                        missing.join(", ")
+                    ));
+                    return Task::none();
+                }
+                self.selected_data_fields
+                    .retain(|(selected_query, _)| selected_query != &query);
+                self.selected_data_fields.extend(
+                    template
+                        .columns
+                        .iter()
+                        .map(|column| (query.clone(), column.field.clone())),
+                );
+                let task = self.update(Message::GenerateDataFields(query));
+                if self.pending_data_field_drop.is_some() {
+                    return self.update(Message::ApplyTableTemplate(index));
+                }
+                return task;
             }
             Message::DropDataFields(band) => {
                 let Some(drag) = self.data_field_drag.take() else {
@@ -994,6 +1398,7 @@ impl DesignerApp {
                     let column_width = printable_width / drag.fields.len() as f32;
                     let field_count = drag.fields.len();
                     let mut allocated_width = 0.0;
+                    let query_name = drag.query.clone();
                     self.pending_data_field_drop = Some(PendingDataFieldDrop {
                         band,
                         query: drag.query,
@@ -1009,11 +1414,37 @@ impl DesignerApp {
                                     allocated_width += width;
                                     width
                                 };
+                                let value_type = self
+                                    .query_field_types
+                                    .get(&(query_name.clone(), field.clone()))
+                                    .copied()
+                                    .unwrap_or(ValueType::Expression);
+                                let alignment = match value_type {
+                                    ValueType::Integer | ValueType::Double => {
+                                        HorizontalAlign::Right
+                                    }
+                                    ValueType::Boolean | ValueType::Date | ValueType::DateTime => {
+                                        HorizontalAlign::Center
+                                    }
+                                    _ => HorizontalAlign::Left,
+                                };
                                 TableColumnSpec {
                                     title: field.clone(),
                                     field,
                                     width: format_mm(width),
-                                    alignment: HorizontalAlign::Left,
+                                    alignment,
+                                    value_type,
+                                    decimal_places: matches!(value_type, ValueType::Double)
+                                        .then_some("2".to_string())
+                                        .unwrap_or_default(),
+                                    date_pattern: match value_type {
+                                        ValueType::Date => "dd.MM.yyyy".to_string(),
+                                        ValueType::DateTime => "dd.MM.yyyy HH:mm".to_string(),
+                                        _ => String::new(),
+                                    },
+                                    prefix: String::new(),
+                                    suffix: String::new(),
+                                    grouping: false,
                                 }
                             })
                             .collect(),
@@ -1051,6 +1482,61 @@ impl DesignerApp {
                     .and_then(|drop| drop.columns.get_mut(index))
                 {
                     column.alignment = alignment;
+                }
+            }
+            Message::DroppedColumnValueTypeChanged(index, value_type) => {
+                if let Some(column) = self
+                    .pending_data_field_drop
+                    .as_mut()
+                    .and_then(|drop| drop.columns.get_mut(index))
+                {
+                    column.value_type = table_templates::parse_value_type(&value_type);
+                }
+            }
+            Message::DroppedColumnDecimalsChanged(index, value) => {
+                if (value.is_empty() || value.parse::<u8>().is_ok())
+                    && let Some(column) = self
+                        .pending_data_field_drop
+                        .as_mut()
+                        .and_then(|drop| drop.columns.get_mut(index))
+                {
+                    column.decimal_places = value;
+                }
+            }
+            Message::DroppedColumnDatePatternChanged(index, value) => {
+                if let Some(column) = self
+                    .pending_data_field_drop
+                    .as_mut()
+                    .and_then(|drop| drop.columns.get_mut(index))
+                {
+                    column.date_pattern = value;
+                }
+            }
+            Message::DroppedColumnPrefixChanged(index, value) => {
+                if let Some(column) = self
+                    .pending_data_field_drop
+                    .as_mut()
+                    .and_then(|drop| drop.columns.get_mut(index))
+                {
+                    column.prefix = value;
+                }
+            }
+            Message::DroppedColumnSuffixChanged(index, value) => {
+                if let Some(column) = self
+                    .pending_data_field_drop
+                    .as_mut()
+                    .and_then(|drop| drop.columns.get_mut(index))
+                {
+                    column.suffix = value;
+                }
+            }
+            Message::DroppedColumnGroupingChanged(index, value) => {
+                if let Some(column) = self
+                    .pending_data_field_drop
+                    .as_mut()
+                    .and_then(|drop| drop.columns.get_mut(index))
+                {
+                    column.grouping = value;
                 }
             }
             Message::MoveDroppedColumnUp(index) => {
@@ -1099,6 +1585,13 @@ impl DesignerApp {
                             width: column.width.clone(),
                             alignment: table_templates::alignment_name(&column.alignment)
                                 .to_string(),
+                            value_type: table_templates::value_type_name(column.value_type)
+                                .to_string(),
+                            decimal_places: column.decimal_places.clone(),
+                            date_pattern: column.date_pattern.clone(),
+                            prefix: column.prefix.clone(),
+                            suffix: column.suffix.clone(),
+                            grouping: column.grouping,
                         })
                         .collect(),
                 };
@@ -1148,6 +1641,12 @@ impl DesignerApp {
                         title: column.title,
                         width: column.width,
                         alignment: table_templates::parse_alignment(&column.alignment),
+                        value_type: table_templates::parse_value_type(&column.value_type),
+                        decimal_places: column.decimal_places,
+                        date_pattern: column.date_pattern,
+                        prefix: column.prefix,
+                        suffix: column.suffix,
+                        grouping: column.grouping,
                     })
                     .collect();
                 drop.center_table = template.center_table;
@@ -1499,6 +1998,7 @@ impl DesignerApp {
             }
             Message::CancelStructureRename => self.structure_rename = None,
             Message::ModifiersChanged(modifiers) => self.keyboard_modifiers = modifiers,
+            Message::CursorMoved(position) => self.cursor_position = position,
             Message::ResizeProperties(dx) => {
                 self.properties_width =
                     (self.properties_width - dx).clamp(MIN_INSPECTOR_WIDTH, MAX_INSPECTOR_WIDTH);
@@ -1507,7 +2007,9 @@ impl DesignerApp {
             Message::DismissError => self.error_message = None,
             Message::OpenSettings => {
                 if let Some(page) = self.report.pages.first() {
-                    self.settings = Some(DesignerSettings::from_page(page, page_font_family(page)));
+                    let mut settings = DesignerSettings::from_page(page, page_font_family(page));
+                    settings.auto_close_messages = self.auto_close_messages;
+                    self.settings = Some(settings);
                 }
             }
             Message::CloseSettings => self.settings = None,
@@ -1531,6 +2033,11 @@ impl DesignerApp {
                     settings.font_family = value;
                 }
             }
+            Message::SettingsAutoCloseMessagesChanged(value) => {
+                if let Some(settings) = &mut self.settings {
+                    settings.auto_close_messages = value;
+                }
+            }
             Message::ApplySettings => {
                 let Some(settings) = self.settings.clone() else {
                     return Task::none();
@@ -1544,6 +2051,7 @@ impl DesignerApp {
                     .and_then(|page| settings.apply(page));
                 match result {
                     Ok(()) => {
+                        self.auto_close_messages = settings.auto_close_messages;
                         self.settings = None;
                         self.error_message = None;
                         if let Some(selection) = self.selection {

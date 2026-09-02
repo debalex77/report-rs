@@ -11,6 +11,7 @@ pub(crate) fn new_text_item(font_family: String) -> Item {
         value_type: ValueType::Text,
         query_source: QuerySource::Main,
         field: None,
+        value_format: ValueFormat::default(),
         font_size: 12.0,
         font_family,
         bold: false,

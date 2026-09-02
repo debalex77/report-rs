@@ -158,11 +158,13 @@ impl LayoutEngine {
                     let effective_height = if text.auto_height {
                         // Resolved values affect wrapping and must be known
                         // before the pagination decision is made.
-                        let resolved_text = expressions::evaluate_for_query(
+                        let resolved_text = expressions::evaluate_formatted_for_query(
                             &text.text,
                             row,
                             context,
                             current_query,
+                            text.value_type,
+                            &text.value_format,
                         );
 
                         let font = text.font_spec();
@@ -239,8 +241,14 @@ impl LayoutEngine {
                 Item::Text(text) => {
                     // Keep these choices identical to measure_band: pagination
                     // is correct only when measuring and rendering agree.
-                    let resolved_text =
-                        expressions::evaluate_for_query(&text.text, row, context, current_query);
+                    let resolved_text = expressions::evaluate_formatted_for_query(
+                        &text.text,
+                        row,
+                        context,
+                        current_query,
+                        text.value_type,
+                        &text.value_format,
+                    );
 
                     let font = text.font_spec();
 
@@ -664,6 +672,8 @@ mod tests {
 
                     field: None,
 
+                    value_format: crate::model::ValueFormat::default(),
+
                     font_size: 12.0,
                     font_family: default_font_family(),
 
@@ -883,6 +893,8 @@ mod tests {
 
                         field: None,
 
+                        value_format: crate::model::ValueFormat::default(),
+
                         font_size: 12.0,
                         font_family: default_font_family(),
 
@@ -939,6 +951,8 @@ mod tests {
                         query_source: QuerySource::Main,
 
                         field: None,
+
+                        value_format: crate::model::ValueFormat::default(),
 
                         font_size: 10.0,
                         font_family: default_font_family(),
@@ -1066,6 +1080,8 @@ mod tests {
 
                     field: None,
 
+                    value_format: crate::model::ValueFormat::default(),
+
                     font_size: 12.0,
                     font_family: default_font_family(),
 
@@ -1163,6 +1179,8 @@ mod tests {
 
                     field: None,
 
+                    value_format: crate::model::ValueFormat::default(),
+
                     font_size: 12.0,
                     font_family: default_font_family(),
 
@@ -1237,6 +1255,7 @@ mod tests {
                     value_type: ValueType::Text,
                     query_source: QuerySource::Main,
                     field: None,
+                    value_format: crate::model::ValueFormat::default(),
                     font_size: 12.0,
                     font_family: default_font_family(),
                     bold: false,
@@ -1300,6 +1319,8 @@ mod tests {
 
                         field: None,
 
+                        value_format: crate::model::ValueFormat::default(),
+
                         font_size: 12.0,
                         font_family: default_font_family(),
 
@@ -1347,6 +1368,8 @@ mod tests {
                         query_source: QuerySource::Main,
 
                         field: None,
+
+                        value_format: crate::model::ValueFormat::default(),
 
                         font_size: 12.0,
                         font_family: default_font_family(),

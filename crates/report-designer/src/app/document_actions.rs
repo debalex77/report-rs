@@ -25,7 +25,9 @@ impl DesignerApp {
         self.redo_stack.clear();
         self.data_source_editor = None;
         self.data_query_editor = None;
+        self.query_rules_editor = None;
         self.query_fields.clear();
+        self.query_field_types.clear();
         self.expanded_data_queries.clear();
         self.selected_data_fields.clear();
         self.data_field_drag = None;
@@ -295,7 +297,9 @@ impl DesignerApp {
                 self.settings = None;
                 self.data_source_editor = None;
                 self.data_query_editor = None;
+                self.query_rules_editor = None;
                 self.query_fields.clear();
+                self.query_field_types.clear();
                 self.expanded_data_queries.clear();
                 self.selected_data_fields.clear();
                 self.data_field_drag = None;

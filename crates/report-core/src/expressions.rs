@@ -1,4 +1,6 @@
 use crate::datasource::{ReportContext, Row, Value};
+use crate::model::{ValueFormat, ValueType};
+use chrono::{NaiveDate, NaiveDateTime};
 
 /// Resolves `${...}` references in a report text expression.
 ///
@@ -45,6 +47,112 @@ pub fn evaluate_for_query(
 
     result.push_str(remaining);
     result
+}
+
+/// Resolves an expression and applies the display format owned by a TextItem.
+pub fn evaluate_formatted_for_query(
+    template: &str,
+    row: Option<&Row>,
+    context: &ReportContext,
+    current_query: Option<&str>,
+    value_type: ValueType,
+    format: &ValueFormat,
+) -> String {
+    let trimmed = template.trim();
+    let value = trimmed
+        .strip_prefix("${")
+        .and_then(|reference| reference.strip_suffix('}'))
+        .filter(|reference| !reference.contains("${"))
+        .and_then(|reference| resolve_reference(reference, row, context, current_query));
+
+    let raw = value
+        .map(Value::as_string)
+        .unwrap_or_else(|| evaluate_for_query(template, row, context, current_query));
+    format_value(value, &raw, value_type, format)
+}
+
+fn format_value(
+    value: Option<&Value>,
+    raw: &str,
+    value_type: ValueType,
+    format: &ValueFormat,
+) -> String {
+    if format.is_default() {
+        return raw.to_string();
+    }
+    let formatted = match value_type {
+        ValueType::Integer | ValueType::Double => {
+            let number = match value {
+                Some(Value::Number(number)) => Some(*number),
+                Some(Value::String(number)) => number.parse().ok(),
+                _ => raw.parse().ok(),
+            };
+            number
+                .map(|number| format_number(number, value_type, format))
+                .unwrap_or_else(|| raw.to_string())
+        }
+        ValueType::Boolean => match value {
+            Some(Value::Bool(value)) => value.to_string(),
+            _ => raw.to_string(),
+        },
+        ValueType::Date | ValueType::DateTime => {
+            format_date(raw, value_type, format).unwrap_or_else(|| raw.to_string())
+        }
+        ValueType::Text | ValueType::Expression => raw.to_string(),
+    };
+    format!("{}{}{}", format.prefix, formatted, format.suffix)
+}
+
+fn format_number(number: f64, value_type: ValueType, format: &ValueFormat) -> String {
+    let mut value = if let Some(decimals) = format.decimal_places {
+        format!("{number:.decimals$}", decimals = decimals as usize)
+    } else if value_type == ValueType::Integer {
+        format!("{number:.0}")
+    } else {
+        number.to_string()
+    };
+    if format.grouping {
+        let (integer, fraction) = value.split_once('.').unwrap_or((&value, ""));
+        let (sign, digits) = integer
+            .strip_prefix('-')
+            .map(|digits| ("-", digits))
+            .unwrap_or(("", integer));
+        let mut grouped = String::with_capacity(integer.len() + integer.len() / 3);
+        grouped.push_str(sign);
+        for (index, character) in digits.chars().enumerate() {
+            if index > 0 && (digits.len() - index).is_multiple_of(3) {
+                grouped.push(' ');
+            }
+            grouped.push(character);
+        }
+        if !fraction.is_empty() {
+            grouped.push('.');
+            grouped.push_str(fraction);
+        }
+        value = grouped;
+    }
+    value
+}
+
+fn format_date(raw: &str, value_type: ValueType, format: &ValueFormat) -> Option<String> {
+    let pattern = format.date_pattern.as_deref()?;
+    let chrono_pattern = pattern
+        .replace("yyyy", "%Y")
+        .replace("MM", "%m")
+        .replace("dd", "%d")
+        .replace("HH", "%H")
+        .replace("mm", "%M")
+        .replace("ss", "%S");
+    if value_type == ValueType::Date {
+        let date = NaiveDate::parse_from_str(raw.get(..10)?, "%Y-%m-%d").ok()?;
+        Some(date.format(&chrono_pattern).to_string())
+    } else {
+        let normalized = raw.replace('T', " ");
+        let date_time = ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"]
+            .into_iter()
+            .find_map(|input| NaiveDateTime::parse_from_str(&normalized, input).ok())?;
+        Some(date_time.format(&chrono_pattern).to_string())
+    }
 }
 
 fn resolve_reference<'a>(
@@ -144,6 +252,74 @@ mod tests {
         assert_eq!(
             evaluate("${Missing.value} ${unknown} ${broken", None, &context),
             "${Missing.value} ${unknown} ${broken"
+        );
+    }
+
+    #[test]
+    fn formats_numeric_query_value() {
+        let mut row = Row::new();
+        row.insert("total".into(), Value::Number(12345.678));
+        let context = ReportContext::new();
+        let format = ValueFormat {
+            decimal_places: Some(2),
+            prefix: "$ ".into(),
+            suffix: " MDL".into(),
+            grouping: true,
+            ..ValueFormat::default()
+        };
+
+        assert_eq!(
+            evaluate_formatted_for_query(
+                "${total}",
+                Some(&row),
+                &context,
+                None,
+                ValueType::Double,
+                &format,
+            ),
+            "$ 12 345.68 MDL"
+        );
+    }
+
+    #[test]
+    fn formats_iso_date_with_report_pattern() {
+        let mut row = Row::new();
+        row.insert("birthday".into(), Value::String("2026-09-01".into()));
+        let context = ReportContext::new();
+        let format = ValueFormat {
+            date_pattern: Some("dd.MM.yyyy".into()),
+            ..ValueFormat::default()
+        };
+
+        assert_eq!(
+            evaluate_formatted_for_query(
+                "${birthday}",
+                Some(&row),
+                &context,
+                None,
+                ValueType::Date,
+                &format,
+            ),
+            "01.09.2026"
+        );
+    }
+
+    #[test]
+    fn empty_format_preserves_previous_expression_output() {
+        let mut row = Row::new();
+        row.insert("total".into(), Value::Number(10.5));
+        let context = ReportContext::new();
+
+        assert_eq!(
+            evaluate_formatted_for_query(
+                "${total}",
+                Some(&row),
+                &context,
+                None,
+                ValueType::Double,
+                &ValueFormat::default(),
+            ),
+            "10.5"
         );
     }
 }

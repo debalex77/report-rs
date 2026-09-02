@@ -60,21 +60,31 @@ pub(super) fn append<'a>(
                 QuerySource::Named(name) => Some(name.as_str()),
             };
             content = content
-                .push(text("Value type").size(11))
                 .push(
-                    pick_list(
-                        value_types,
-                        Some(value_type_name(text_item.value_type).to_string()),
-                        Message::ValueTypeChanged,
-                    )
-                    .text_size(12)
-                    .padding(4),
-                )
-                .push(text("Query").size(11))
-                .push(
-                    pick_list(queries, Some(selected_query), Message::QuerySourceChanged)
+                    row![
+                        text("Value type").size(11).width(72),
+                        pick_list(
+                            value_types,
+                            Some(value_type_name(text_item.value_type).to_string()),
+                            Message::ValueTypeChanged,
+                        )
+                        .width(Fill)
                         .text_size(12)
-                        .padding(4),
+                        .padding(4)
+                    ]
+                    .spacing(6)
+                    .align_y(iced::Alignment::Center),
+                )
+                .push(
+                    row![
+                        text("Query").size(11).width(72),
+                        pick_list(queries, Some(selected_query), Message::QuerySourceChanged)
+                            .width(Fill)
+                            .text_size(12)
+                            .padding(4)
+                    ]
+                    .spacing(6)
+                    .align_y(iced::Alignment::Center),
                 );
             let editor = text_editor(&app.text_inputs.text)
                 .placeholder("Text / Value")
@@ -101,16 +111,7 @@ pub(super) fn append<'a>(
                     content = content.push(editor);
                 }
             } else {
-                content = content
-                    .push(text("Field").size(11))
-                    .push(
-                        text_input("Query field", text_item.field.as_deref().unwrap_or(""))
-                            .width(Fill)
-                            .size(12)
-                            .padding(4)
-                            .on_input(Message::QueryFieldChanged),
-                    )
-                    .push(editor);
+                content = content.push(text("Text / Value").size(11)).push(editor);
             }
         }
         content = content.push(
@@ -129,6 +130,58 @@ pub(super) fn append<'a>(
                     .on_toggle(Message::AutoHeightChanged),
             ]
             .spacing(14),
+        );
+    }
+
+    content = content.push(property_group_header(
+        "Value Format",
+        PropertyGroup::ValueFormat,
+        app.collapsed_groups
+            .is_collapsed(PropertyGroup::ValueFormat),
+    ));
+    if !app
+        .collapsed_groups
+        .is_collapsed(PropertyGroup::ValueFormat)
+    {
+        if matches!(text_item.value_type, ValueType::Integer | ValueType::Double) {
+            content = content
+                .push(text("Decimal places").size(11))
+                .push(
+                    text_input("Default", &app.text_inputs.decimal_places)
+                        .width(92)
+                        .size(11)
+                        .padding(4)
+                        .on_input(Message::ValueFormatDecimalChanged),
+                )
+                .push(
+                    toggler(text_item.value_format.grouping)
+                        .label("Group digits")
+                        .text_size(11)
+                        .size(16)
+                        .spacing(7)
+                        .on_toggle(Message::ValueFormatGroupingChanged),
+                );
+        }
+        if matches!(text_item.value_type, ValueType::Date | ValueType::DateTime) {
+            content = content.push(text("Date pattern").size(11)).push(
+                text_input("dd.MM.yyyy", &app.text_inputs.date_pattern)
+                    .size(11)
+                    .padding(4)
+                    .on_input(Message::ValueFormatDatePatternChanged),
+            );
+        }
+        content = content.push(text("Prefix / suffix").size(11)).push(
+            row![
+                text_input("Prefix", &app.text_inputs.value_prefix)
+                    .size(11)
+                    .padding(4)
+                    .on_input(Message::ValueFormatPrefixChanged),
+                text_input("Suffix", &app.text_inputs.value_suffix)
+                    .size(11)
+                    .padding(4)
+                    .on_input(Message::ValueFormatSuffixChanged),
+            ]
+            .spacing(5),
         );
     }
 

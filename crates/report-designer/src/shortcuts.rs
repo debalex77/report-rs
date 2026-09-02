@@ -4,6 +4,9 @@ use super::message::Message;
 
 pub(super) fn keyboard_shortcuts() -> Subscription<Message> {
     event::listen_with(|event, status, _window| {
+        if let iced::Event::Mouse(iced::mouse::Event::CursorMoved { position }) = event {
+            return Some(Message::CursorMoved(position));
+        }
         if let iced::Event::Keyboard(keyboard::Event::ModifiersChanged(modifiers)) = event {
             return Some(Message::ModifiersChanged(modifiers));
         }

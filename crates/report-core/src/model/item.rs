@@ -28,6 +28,10 @@ pub struct TextItem {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub field: Option<String>,
 
+    /// Optional display formatting applied to the resolved value.
+    #[serde(default, skip_serializing_if = "ValueFormat::is_default")]
+    pub value_format: ValueFormat,
+
     pub font_size: f32,
 
     #[serde(default = "default_font_family")]

@@ -643,7 +643,13 @@ impl PreviewApp {
         .width(canvas_width)
         .height(canvas_height);
 
-        let preview_area = container(canvas).center_x(Fill);
+        let preview_area = container(canvas)
+            .center_x(Fill)
+            .width(Fill)
+            .style(|_theme: &Theme| container::Style {
+                background: Some(iced::Background::Color(Color::from_rgb8(196, 200, 205))),
+                ..Default::default()
+            });
         let viewport = scrollable(preview_area).width(Fill).height(Fill);
         let zoom_percent = (self.zoom * 100.0).round() as u32;
 

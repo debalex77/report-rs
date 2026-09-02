@@ -1,4 +1,5 @@
 use super::*;
+use std::path::Path;
 
 #[derive(Debug, Clone)]
 pub(crate) struct DataSourceEditor {
@@ -13,6 +14,12 @@ pub(crate) struct DataQueryEditor {
     pub(crate) query_index: Option<usize>,
     pub(crate) name: String,
     pub(crate) sql: text_editor::Content,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum QueryTextTarget {
+    Name,
+    Sql,
 }
 
 impl DataQueryEditor {
@@ -39,7 +46,7 @@ impl DataSourceEditor {
     pub(crate) fn new() -> Self {
         Self {
             index: None,
-            name: String::new(),
+            name: "main".to_string(),
             path: String::new(),
             test_result: None,
         }
@@ -134,6 +141,16 @@ pub(crate) fn save_data_query(report: &mut Report, editor: &DataQueryEditor) -> 
     let query = DataQuery {
         name: name.to_string(),
         sql: sql.to_string(),
+        filters: editor
+            .query_index
+            .and_then(|index| source.queries.get(index))
+            .map(|query| query.filters.clone())
+            .unwrap_or_default(),
+        sorts: editor
+            .query_index
+            .and_then(|index| source.queries.get(index))
+            .map(|query| query.sorts.clone())
+            .unwrap_or_default(),
     };
     if let Some(index) = editor.query_index {
         *source
@@ -146,12 +163,139 @@ pub(crate) fn save_data_query(report: &mut Report, editor: &DataQueryEditor) -> 
     Ok(())
 }
 
+fn infer_query_value_type(field: &str, value: Option<&Value>) -> ValueType {
+    let name = field.to_ascii_lowercase();
+    if name.starts_with("is_") || name.starts_with("has_") || name.starts_with("can_") {
+        return ValueType::Boolean;
+    }
+    match value {
+        Some(Value::Number(number)) => {
+            if number.fract() == 0.0 {
+                ValueType::Integer
+            } else {
+                ValueType::Double
+            }
+        }
+        Some(Value::Bool(_)) => ValueType::Boolean,
+        Some(Value::String(value)) if looks_like_iso_datetime(value) => ValueType::DateTime,
+        Some(Value::String(value)) if looks_like_iso_date(value) => ValueType::Date,
+        Some(Value::String(_)) => ValueType::Text,
+        Some(Value::Null) | None
+            if name.contains("date")
+                || name.contains("birth")
+                || name.ends_with("_at")
+                || name.contains("time") =>
+        {
+            ValueType::Date
+        }
+        Some(Value::Null) | None => ValueType::Expression,
+    }
+}
+
+fn looks_like_iso_date(value: &str) -> bool {
+    value.len() >= 10
+        && value.as_bytes().get(4) == Some(&b'-')
+        && value.as_bytes().get(7) == Some(&b'-')
+        && value[..4]
+            .chars()
+            .all(|character| character.is_ascii_digit())
+}
+
+fn looks_like_iso_datetime(value: &str) -> bool {
+    looks_like_iso_date(value)
+        && value.len() >= 16
+        && matches!(value.as_bytes().get(10), Some(b'T' | b' '))
+}
+
+pub(super) fn parse_filter_operator(value: &str) -> FilterOperator {
+    match value {
+        "Not equal" => FilterOperator::NotEqual,
+        "Contains" => FilterOperator::Contains,
+        "Starts with" => FilterOperator::StartsWith,
+        "Greater" => FilterOperator::Greater,
+        "Greater or equal" => FilterOperator::GreaterOrEqual,
+        "Less" => FilterOperator::Less,
+        "Less or equal" => FilterOperator::LessOrEqual,
+        "Is null" => FilterOperator::IsNull,
+        "Is not null" => FilterOperator::IsNotNull,
+        _ => FilterOperator::Equal,
+    }
+}
+
+fn filter_operator_name(operator: FilterOperator) -> &'static str {
+    match operator {
+        FilterOperator::Equal => "Equal",
+        FilterOperator::NotEqual => "Not equal",
+        FilterOperator::Contains => "Contains",
+        FilterOperator::StartsWith => "Starts with",
+        FilterOperator::Greater => "Greater",
+        FilterOperator::GreaterOrEqual => "Greater or equal",
+        FilterOperator::Less => "Less",
+        FilterOperator::LessOrEqual => "Less or equal",
+        FilterOperator::IsNull => "Is null",
+        FilterOperator::IsNotNull => "Is not null",
+    }
+}
+
+pub(super) fn load_query_rules_preview(
+    report: &Report,
+    report_path: Option<&Path>,
+    editor: &QueryRulesEditor,
+) -> Result<QueryRulesPreview, String> {
+    let source = report
+        .data_sources
+        .get(editor.source_index)
+        .ok_or_else(|| "The data source no longer exists".to_string())?;
+    let query = source
+        .queries
+        .get(editor.query_index)
+        .ok_or_else(|| "The query no longer exists".to_string())?;
+    let DataConnection::Sqlite { path } = &source.connection;
+    let path = PathBuf::from(path);
+    let path = if path.is_absolute() {
+        path
+    } else {
+        report_directory(report_path).join(path)
+    };
+    let provider =
+        SqliteDataProvider::open(&source.name, &path).map_err(|error| error.to_string())?;
+    let mut rows = provider
+        .query(&source.name, &query.name, &query.sql)
+        .map_err(|error| error.to_string())?;
+    let total_rows = rows.len();
+    let draft = DataQuery {
+        name: query.name.clone(),
+        sql: query.sql.clone(),
+        filters: editor.filters.clone(),
+        sorts: editor.sorts.clone(),
+    };
+    apply_query_transformations(&mut rows, &draft);
+    let filtered_rows = rows.len();
+    let preview_rows = rows
+        .into_iter()
+        .take(8)
+        .map(|row| {
+            editor
+                .fields
+                .iter()
+                .map(|field| row.get(field).map(Value::as_string).unwrap_or_default())
+                .collect()
+        })
+        .collect();
+    Ok(QueryRulesPreview {
+        total_rows,
+        filtered_rows,
+        fields: editor.fields.clone(),
+        rows: preview_rows,
+    })
+}
+
 impl DesignerApp {
     pub(super) fn load_query_field_names(
         &self,
         source_index: usize,
         query_index: usize,
-    ) -> Result<(String, Vec<String>), String> {
+    ) -> Result<(String, Vec<String>, HashMap<String, ValueType>), String> {
         let source = self
             .report
             .data_sources
@@ -168,10 +312,25 @@ impl DesignerApp {
         } else {
             report_directory(self.path.as_deref()).join(path)
         };
-        let fields = SqliteDataProvider::open(&source.name, &path)
-            .and_then(|provider| provider.fields(&source.name, &query.name, &query.sql))
+        let provider =
+            SqliteDataProvider::open(&source.name, &path).map_err(|error| error.to_string())?;
+        let fields = provider
+            .fields(&source.name, &query.name, &query.sql)
             .map_err(|error| error.to_string())?;
-        Ok((query.name.clone(), fields))
+        let sql = query.sql.trim().trim_end_matches(';');
+        let sample_sql = format!("SELECT * FROM ({sql}) AS report_rs_sample LIMIT 1");
+        let sample = provider
+            .query(&source.name, &query.name, &sample_sql)
+            .ok()
+            .and_then(|rows| rows.into_iter().next());
+        let types = fields
+            .iter()
+            .map(|field| {
+                let value = sample.as_ref().and_then(|row| row.get(field));
+                (field.clone(), infer_query_value_type(field, value))
+            })
+            .collect();
+        Ok((query.name.clone(), fields, types))
     }
 
     pub(super) fn data_source_dialog(&self) -> Element<'_, Message> {
@@ -256,15 +415,22 @@ impl DesignerApp {
             .size(20),
             text(format!("Connection: {source_name}")).size(11),
             text("Query name / DataBand source").size(12),
-            text_input("orders", &editor.name)
-                .size(12)
-                .padding(6)
-                .on_input(Message::DataQueryNameChanged),
+            mouse_area(
+                text_input("orders", &editor.name)
+                    .id(self.query_name_input_id.clone())
+                    .size(12)
+                    .padding(6)
+                    .on_input(Message::DataQueryNameChanged)
+            )
+            .on_right_press(Message::OpenQueryTextMenu(QueryTextTarget::Name)),
             text("SQL").size(12),
-            text_editor(&editor.sql)
-                .height(330)
-                .padding(7)
-                .on_action(Message::DataQuerySqlEdited),
+            mouse_area(
+                text_editor(&editor.sql)
+                    .height(330)
+                    .padding(7)
+                    .on_action(Message::DataQuerySqlEdited)
+            )
+            .on_right_press(Message::OpenQueryTextMenu(QueryTextTarget::Sql)),
         ]
         .spacing(7);
         let content = content.push(
@@ -281,6 +447,209 @@ impl DesignerApp {
             .align_y(iced::Alignment::Center),
         );
         dialog_container(scrollable(content.padding(18)).height(560), 620.0)
+    }
+
+    pub(super) fn query_rules_dialog(&self) -> Element<'_, Message> {
+        let Some(editor) = &self.query_rules_editor else {
+            return Space::new().into();
+        };
+        let operators = [
+            "Equal",
+            "Not equal",
+            "Contains",
+            "Starts with",
+            "Greater",
+            "Greater or equal",
+            "Less",
+            "Less or equal",
+            "Is null",
+            "Is not null",
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+        let mut content = iced::widget::column![
+            text("Query filters and sorting").size(20),
+            text(format!("Query: {}", editor.query_name)).size(11),
+            row![
+                text("Filters").size(15),
+                Space::new().width(Fill),
+                button(text("+ Filter").size(11))
+                    .style(common::style_button(6.0))
+                    .on_press_maybe((!editor.fields.is_empty()).then_some(Message::AddQueryFilter)),
+            ]
+            .align_y(iced::Alignment::Center),
+        ]
+        .spacing(8);
+        if editor.filters.is_empty() {
+            content = content.push(text("No filters. All query rows are included.").size(10));
+        }
+        for (index, filter) in editor.filters.iter().enumerate() {
+            content = content.push(
+                row![
+                    pick_list(
+                        editor.fields.clone(),
+                        Some(filter.field.clone()),
+                        move |value| Message::QueryFilterFieldChanged(index, value),
+                    )
+                    .width(140)
+                    .text_size(11)
+                    .padding(4),
+                    pick_list(
+                        operators.clone(),
+                        Some(filter_operator_name(filter.operator).to_string()),
+                        move |value| Message::QueryFilterOperatorChanged(index, value),
+                    )
+                    .width(145)
+                    .text_size(11)
+                    .padding(4),
+                    text_input("Value", &filter.value)
+                        .width(Fill)
+                        .size(11)
+                        .padding(4)
+                        .on_input(move |value| Message::QueryFilterValueChanged(index, value)),
+                    toggler(filter.case_sensitive)
+                        .label("Aa")
+                        .text_size(10)
+                        .size(14)
+                        .spacing(3)
+                        .on_toggle(move |value| Message::QueryFilterCaseChanged(index, value)),
+                    button(container(text("×").size(11)).center(Fill))
+                        .width(26)
+                        .height(26)
+                        .padding(0)
+                        .style(common::style_button(5.0))
+                        .on_press(Message::RemoveQueryFilter(index)),
+                ]
+                .spacing(5)
+                .align_y(iced::Alignment::Center),
+            );
+        }
+        content = content.push(rule::horizontal(1)).push(
+            row![
+                text("Sorting").size(15),
+                Space::new().width(Fill),
+                button(text("+ Sort").size(11))
+                    .style(common::style_button(6.0))
+                    .on_press_maybe((!editor.fields.is_empty()).then_some(Message::AddQuerySort)),
+            ]
+            .align_y(iced::Alignment::Center),
+        );
+        if editor.sorts.is_empty() {
+            content = content.push(text("No sorting. Query order is preserved.").size(10));
+        }
+        for (index, sort) in editor.sorts.iter().enumerate() {
+            let direction = match sort.direction {
+                SortDirection::Ascending => "Ascending",
+                SortDirection::Descending => "Descending",
+            };
+            content = content.push(
+                row![
+                    pick_list(
+                        editor.fields.clone(),
+                        Some(sort.field.clone()),
+                        move |value| Message::QuerySortFieldChanged(index, value),
+                    )
+                    .width(Fill)
+                    .text_size(11)
+                    .padding(4),
+                    pick_list(
+                        vec!["Ascending".to_string(), "Descending".to_string()],
+                        Some(direction.to_string()),
+                        move |value| Message::QuerySortDirectionChanged(index, value),
+                    )
+                    .width(135)
+                    .text_size(11)
+                    .padding(4),
+                    button(container(text("↑").size(11)).center(Fill))
+                        .width(26)
+                        .height(26)
+                        .padding(0)
+                        .style(common::style_button(4.0))
+                        .on_press_maybe((index > 0).then_some(Message::MoveQuerySortUp(index))),
+                    button(container(text("↓").size(11)).center(Fill))
+                        .width(26)
+                        .height(26)
+                        .padding(0)
+                        .style(common::style_button(4.0))
+                        .on_press_maybe(
+                            (index + 1 < editor.sorts.len())
+                                .then_some(Message::MoveQuerySortDown(index)),
+                        ),
+                    button(container(text("×").size(11)).center(Fill))
+                        .width(26)
+                        .height(26)
+                        .padding(0)
+                        .style(common::style_button(5.0))
+                        .on_press(Message::RemoveQuerySort(index)),
+                ]
+                .spacing(5)
+                .align_y(iced::Alignment::Center),
+            );
+        }
+        content = content.push(rule::horizontal(1)).push(
+            row![
+                text("Result preview").size(15),
+                Space::new().width(Fill),
+                button(text("Preview rules").size(11))
+                    .style(common::style_button(6.0))
+                    .on_press(Message::PreviewQueryRules),
+            ]
+            .align_y(iced::Alignment::Center),
+        );
+        if let Some(preview) = &editor.preview {
+            content = content.push(
+                text(format!(
+                    "Rows: {} before filters → {} after filters",
+                    preview.total_rows, preview.filtered_rows
+                ))
+                .size(11),
+            );
+            let header = preview
+                .fields
+                .iter()
+                .map(|field| truncate(field, 18))
+                .collect::<Vec<_>>()
+                .join("  |  ");
+            let mut result = iced::widget::column![text(header).size(10)].spacing(3);
+            for row in &preview.rows {
+                let row = row
+                    .iter()
+                    .map(|value| truncate(value, 18))
+                    .collect::<Vec<_>>()
+                    .join("  |  ");
+                result = result.push(text(row).size(10));
+            }
+            if preview.rows.is_empty() {
+                result = result.push(text("No rows match the current filters.").size(10));
+            }
+            content = content.push(container(result.padding(7)).width(Fill).style(
+                |theme: &Theme| container::Style {
+                    background: Some(Background::Color(
+                        theme.extended_palette().background.weak.color,
+                    )),
+                    border: iced::Border {
+                        color: theme.extended_palette().background.strong.color,
+                        width: 1.0,
+                        radius: iced::border::radius(6),
+                    },
+                    ..Default::default()
+                },
+            ));
+        }
+        content = content.push(
+            row![
+                Space::new().width(Fill),
+                button(text("Cancel").size(12))
+                    .style(common::style_button(6.0))
+                    .on_press(Message::CancelQueryRules),
+                button(text("Save").size(12))
+                    .style(button::primary)
+                    .on_press(Message::SaveQueryRules),
+            ]
+            .spacing(6),
+        );
+        dialog_container(scrollable(content.padding(18)).height(560), 720.0)
     }
 
     pub(super) fn query_field_dialog(&self) -> Element<'_, Message> {
@@ -324,8 +693,8 @@ impl DesignerApp {
                 text("Field").size(10).width(110),
                 text("Column title").size(10).width(Fill),
                 text("Width (mm)").size(10).width(82),
-                text("Align").size(10).width(92),
-                text("Order").size(10).width(58),
+                container(text("Align").size(10)).width(92).center_x(92),
+                container(text("Order").size(10)).width(58).center_x(58),
             ]
             .spacing(5),
         ]
@@ -333,38 +702,64 @@ impl DesignerApp {
         if !self.table_templates.is_empty() {
             let mut templates = row![text("Templates").size(11)].spacing(5);
             for (index, template) in self.table_templates.iter().enumerate() {
-                templates = templates
-                    .push(
-                        button(text(&template.name).size(10))
-                            .padding([4, 7])
-                            .style(common::style_button(5.0))
-                            .on_press(Message::ApplyTableTemplate(index)),
+                templates = templates.push(
+                    container(
+                        row![
+                            button(text(&template.name).size(10))
+                                .height(24)
+                                .padding([4, 7])
+                                .style(button::text)
+                                .on_press(Message::ApplyTableTemplate(index)),
+                            button(container(text("×").size(10)).center(Fill))
+                                .width(22)
+                                .height(24)
+                                .padding(0)
+                                .style(button::text)
+                                .on_press(Message::DeleteTableTemplate(index)),
+                        ]
+                        .spacing(0)
+                        .align_y(iced::Alignment::Center),
                     )
-                    .push(
-                        button(text("×").size(10))
-                            .width(22)
-                            .height(22)
-                            .padding(0)
-                            .style(button::danger)
-                            .on_press(Message::DeleteTableTemplate(index)),
-                    );
+                    .style(|theme: &Theme| container::Style {
+                        border: iced::Border {
+                            color: theme.extended_palette().background.strong.color,
+                            width: 1.0,
+                            radius: iced::border::radius(5),
+                        },
+                        ..Default::default()
+                    }),
+                );
             }
             content = content.push(templates.align_y(iced::Alignment::Center));
         }
         for (index, column) in drop.columns.iter().enumerate() {
-            let align_button = |label, alignment| {
+            let align_button = |icon: &'static [u8], alignment| {
                 let selected =
                     std::mem::discriminant(&column.alignment) == std::mem::discriminant(&alignment);
-                button(text(if selected { label } else { label }).size(10))
-                    .width(26)
-                    .height(24)
-                    .padding(0)
-                    .style(if selected {
-                        button::primary
-                    } else {
-                        button::secondary
-                    })
-                    .on_press(Message::DroppedColumnAlignmentChanged(index, alignment))
+                button(
+                    container(
+                        svg(svg::Handle::from_memory(icon))
+                            .width(14)
+                            .height(14)
+                            .style(move |theme: &Theme, _status: svg::Status| svg::Style {
+                                color: Some(if selected {
+                                    Color::WHITE
+                                } else {
+                                    theme.palette().text
+                                }),
+                            }),
+                    )
+                    .center(Fill),
+                )
+                .width(26)
+                .height(24)
+                .padding(0)
+                .style(if selected {
+                    button::primary
+                } else {
+                    button::secondary
+                })
+                .on_press(Message::DroppedColumnAlignmentChanged(index, alignment))
             };
             content = content.push(
                 row![
@@ -380,14 +775,23 @@ impl DesignerApp {
                         .width(82)
                         .on_input(move |value| Message::DroppedColumnWidthChanged(index, value)),
                     row![
-                        align_button("L", HorizontalAlign::Left),
-                        align_button("C", HorizontalAlign::Center),
-                        align_button("R", HorizontalAlign::Right),
+                        align_button(
+                            include_bytes!("../../../assets/format-justify-left-symbolic.svg"),
+                            HorizontalAlign::Left
+                        ),
+                        align_button(
+                            include_bytes!("../../../assets/format-justify-center-symbolic.svg"),
+                            HorizontalAlign::Center
+                        ),
+                        align_button(
+                            include_bytes!("../../../assets/format-justify-right-symbolic.svg"),
+                            HorizontalAlign::Right
+                        ),
                     ]
                     .spacing(3)
                     .width(92),
                     row![
-                        button(text("↑").size(11))
+                        button(container(text("↑").size(11)).center(Fill))
                             .width(26)
                             .height(24)
                             .padding(0)
@@ -395,7 +799,7 @@ impl DesignerApp {
                             .on_press_maybe(
                                 (index > 0).then_some(Message::MoveDroppedColumnUp(index)),
                             ),
-                        button(text("↓").size(11))
+                        button(container(text("↓").size(11)).center(Fill))
                             .width(26)
                             .height(24)
                             .padding(0)
@@ -411,6 +815,80 @@ impl DesignerApp {
                 .spacing(5)
                 .align_y(iced::Alignment::Center),
             );
+            let value_types = [
+                "Expression",
+                "Text",
+                "Integer",
+                "Double",
+                "Boolean",
+                "Date",
+                "DateTime",
+            ]
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+            let mut format_row = row![
+                Space::new().width(110),
+                pick_list(
+                    value_types,
+                    Some(table_templates::value_type_name(column.value_type).to_string()),
+                    move |value| Message::DroppedColumnValueTypeChanged(index, value),
+                )
+                .width(105)
+                .text_size(10)
+                .padding(4),
+            ]
+            .spacing(5)
+            .align_y(iced::Alignment::Center);
+            if matches!(column.value_type, ValueType::Integer | ValueType::Double) {
+                format_row = format_row
+                    .push(
+                        text_input("Decimals", &column.decimal_places)
+                            .width(72)
+                            .size(10)
+                            .padding(4)
+                            .on_input(move |value| {
+                                Message::DroppedColumnDecimalsChanged(index, value)
+                            }),
+                    )
+                    .push(
+                        toggler(column.grouping)
+                            .label("Group")
+                            .text_size(10)
+                            .size(14)
+                            .spacing(4)
+                            .on_toggle(move |value| {
+                                Message::DroppedColumnGroupingChanged(index, value)
+                            }),
+                    );
+            }
+            if matches!(column.value_type, ValueType::Date | ValueType::DateTime) {
+                format_row = format_row.push(
+                    text_input("dd.MM.yyyy", &column.date_pattern)
+                        .width(112)
+                        .size(10)
+                        .padding(4)
+                        .on_input(move |value| {
+                            Message::DroppedColumnDatePatternChanged(index, value)
+                        }),
+                );
+            }
+            format_row = format_row
+                .push(
+                    text_input("Prefix", &column.prefix)
+                        .width(78)
+                        .size(10)
+                        .padding(4)
+                        .on_input(move |value| Message::DroppedColumnPrefixChanged(index, value)),
+                )
+                .push(
+                    text_input("Suffix", &column.suffix)
+                        .width(78)
+                        .size(10)
+                        .padding(4)
+                        .on_input(move |value| Message::DroppedColumnSuffixChanged(index, value)),
+                );
+            content = content.push(format_row);
         }
         content = content
             .push(
@@ -438,30 +916,108 @@ impl DesignerApp {
                 ]
                 .spacing(6)
                 .align_y(iced::Alignment::Center),
-            )
-            .push(
-                row![
-                    Space::new().width(Fill),
-                    button(text("Cancel").size(12))
-                        .style(common::style_button(6.0))
-                        .on_press(Message::CancelDataFieldDrop),
-                    button(text("Data only").size(12))
-                        .style(common::style_button(6.0))
-                        .on_press(Message::CreateDroppedDataFields(false)),
-                    button(text("Header + Data").size(12))
-                        .style(button::primary)
-                        .on_press(Message::CreateDroppedDataFields(true)),
-                ]
-                .spacing(6)
-                .align_y(iced::Alignment::Center),
             );
-        dialog_container(scrollable(content.padding(18)).height(520), 720.0)
+        let actions = row![
+            Space::new().width(Fill),
+            button(container(text("Cancel").size(12)).center(Fill))
+                .width(82)
+                .height(30)
+                .padding(0)
+                .style(common::style_button(6.0))
+                .on_press(Message::CancelDataFieldDrop),
+            button(container(text("Data only").size(12)).center(Fill))
+                .width(92)
+                .height(30)
+                .padding(0)
+                .style(common::style_button(6.0))
+                .on_press(Message::CreateDroppedDataFields(false)),
+            button(container(text("Header + Data").size(12)).center(Fill))
+                .width(112)
+                .height(30)
+                .padding(0)
+                .style(common::style_button(6.0))
+                .on_press(Message::CreateDroppedDataFields(true)),
+        ]
+        .spacing(6)
+        .align_y(iced::Alignment::Center);
+        dialog_container(
+            iced::widget::column![
+                scrollable(content.padding(18)).height(Fill),
+                container(actions).padding([8, 18]).width(Fill),
+            ]
+            .height(560),
+            820.0,
+        )
     }
+}
+
+pub(super) fn query_text_context_popup(position: Point) -> Element<'static, Message> {
+    let action = |label, message| {
+        button(text(label).size(12))
+            .height(28)
+            .padding([5, 10])
+            .style(button::text)
+            .on_press(message)
+    };
+    let actions = iced::widget::column![
+        action("Copy", Message::CopyQueryText),
+        action("Paste", Message::PasteQueryText),
+        action("Cut", Message::CutQueryText),
+        popup_menu_separator(),
+        action("Select all", Message::SelectAllQueryText),
+    ]
+    .spacing(1)
+    .width(iced::Shrink);
+    let popup = container(opaque(
+        container(actions).padding(4).style(popup_menu_style),
+    ))
+    .padding(iced::Padding {
+        top: position.y.max(0.0),
+        right: 0.0,
+        bottom: 0.0,
+        left: position.x.max(0.0),
+    })
+    .align_x(iced::alignment::Horizontal::Left)
+    .align_y(iced::alignment::Vertical::Top)
+    .width(Fill)
+    .height(Fill);
+    stack![
+        mouse_area(Space::new().width(Fill).height(Fill)).on_press(Message::CloseQueryTextMenu),
+        popup,
+    ]
+    .into()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn infers_query_value_types_and_date_names() {
+        assert_eq!(
+            infer_query_value_type("quantity", Some(&Value::Number(3.0))),
+            ValueType::Integer
+        );
+        assert_eq!(
+            infer_query_value_type("price", Some(&Value::Number(12.5))),
+            ValueType::Double
+        );
+        assert_eq!(
+            infer_query_value_type("birthday", Some(&Value::String("2026-09-01".into()))),
+            ValueType::Date
+        );
+        assert_eq!(
+            infer_query_value_type(
+                "created_at",
+                Some(&Value::String("2026-09-01 14:30:00".into()))
+            ),
+            ValueType::DateTime
+        );
+        assert_eq!(
+            infer_query_value_type("is_active", Some(&Value::Number(1.0))),
+            ValueType::Boolean
+        );
+    }
 
     #[test]
     fn saves_new_sqlite_data_source() {

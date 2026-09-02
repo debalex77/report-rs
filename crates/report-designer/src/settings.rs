@@ -16,6 +16,7 @@ pub struct DesignerSettings {
     pub right: String,
     pub bottom: String,
     pub font_family: String,
+    pub auto_close_messages: bool,
 }
 
 impl DesignerSettings {
@@ -27,6 +28,7 @@ impl DesignerSettings {
             right: format_mm(page.margins.right.0),
             bottom: format_mm(page.margins.bottom.0),
             font_family,
+            auto_close_messages: true,
         }
     }
 

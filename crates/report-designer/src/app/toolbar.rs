@@ -3,38 +3,40 @@ use super::*;
 impl DesignerApp {
     pub(super) fn toolbar(&self) -> Element<'_, Message> {
         row![
-            toolbar_icon_text_button(
+            toolbar_action_button(
                 include_bytes!("../../../../assets/document-new-symbolic.svg"),
                 "New Report",
                 Some(Message::NewReport)
             ),
-            toolbar_icon_text_button(
+            toolbar_separator(),
+            toolbar_action_button(
                 include_bytes!("../../../../assets/document-open-symbolic.svg"),
                 "Load",
                 Some(Message::Load)
             ),
-            toolbar_icon_text_button(
+            toolbar_action_button(
                 include_bytes!("../../../../assets/document-save-symbolic.svg"),
                 "Save",
                 Some(Message::Save)
             ),
-            toolbar_icon_text_button(
+            toolbar_action_button(
                 include_bytes!("../../../../assets/view-refresh-symbolic.svg"),
                 "Reload",
                 self.path.is_some().then_some(Message::Reload)
             ),
-            toolbar_icon_text_button(
+            toolbar_separator(),
+            toolbar_action_button(
                 include_bytes!("../../../../assets/preview-symbolic.svg"),
                 "Preview",
                 Some(Message::Preview)
             ),
             toolbar_separator(),
-            toolbar_icon_text_button(
+            toolbar_action_button(
                 include_bytes!("../../../../assets/edit-undo-symbolic.svg"),
                 "Undo",
                 (!self.undo_stack.is_empty()).then_some(Message::Undo)
             ),
-            toolbar_icon_text_button(
+            toolbar_action_button(
                 include_bytes!("../../../../assets/edit-redo-symbolic.svg"),
                 "Redo",
                 (!self.redo_stack.is_empty()).then_some(Message::Redo)
@@ -49,9 +51,9 @@ impl DesignerApp {
                 Message::OpenSettings,
             ),
             toolbar_square_button("−", Message::ZoomOut),
-            toolbar_text_button(
+            toolbar_zoom_button(
                 format!("{}%", (self.zoom * 100.0).round() as u32),
-                Some(Message::ZoomReset)
+                Message::ZoomReset
             ),
             toolbar_square_button("+", Message::ZoomIn),
             path_frame(

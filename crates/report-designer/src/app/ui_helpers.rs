@@ -70,44 +70,50 @@ pub(super) fn alignment_button(
     })
 }
 
-pub(super) fn toolbar_text_button(
-    label: impl Into<String>,
-    message: Option<Message>,
-) -> iced::widget::Button<'static, Message> {
-    button(text(label.into()).size(12))
-        .height(30)
-        .padding([5, 9])
-        .style(common::style_button(7.0))
-        .on_press_maybe(message)
-}
-
-pub(super) fn toolbar_icon_text_button(
+pub(super) fn toolbar_action_button(
     icon: &'static [u8],
-    label: &'static str,
+    tooltip_text: &'static str,
     message: Option<Message>,
-) -> iced::widget::Button<'static, Message> {
-    let content = row![
-        svg(svg::Handle::from_memory(icon))
-            .width(15)
-            .height(15)
-            .style(|_theme: &Theme, _status: svg::Status| svg::Style {
-                color: Some(Color::WHITE),
-            }),
-        text(label).size(11),
-    ]
-    .spacing(6)
-    .align_y(iced::Alignment::Center);
-    button(container(content).width(Fill).center_x(Fill).center_y(30))
-        .width(104)
-        .height(30)
-        .padding(0)
-        .style(common::style_button(7.0))
-        .on_press_maybe(message)
+) -> Element<'static, Message> {
+    let control = button(
+        container(
+            svg(svg::Handle::from_memory(icon))
+                .width(16)
+                .height(16)
+                .style(|_theme: &Theme, _status: svg::Status| svg::Style {
+                    color: Some(Color::WHITE),
+                }),
+        )
+        .center(Fill),
+    )
+    .width(30)
+    .height(30)
+    .padding(0)
+    .style(common::style_button(7.0))
+    .on_press_maybe(message);
+    tooltip(
+        control,
+        text(tooltip_text).size(11),
+        tooltip::Position::Bottom,
+    )
+    .gap(6)
+    .style(|theme: &Theme| container::Style {
+        background: Some(Background::Color(theme.palette().background)),
+        border: iced::Border {
+            color: theme.extended_palette().background.strong.color,
+            width: 1.0,
+            radius: iced::border::radius(5),
+        },
+        text_color: Some(theme.palette().text),
+        ..Default::default()
+    })
+    .into()
 }
 
 pub(super) fn path_frame<'a>(value: String) -> Element<'a, Message> {
     container(text(value).size(11))
         .padding([5, 9])
+        .width(Fill)
         .style(|theme: &Theme| container::Style {
             background: Some(Background::Color(
                 theme.extended_palette().background.weak.color,
@@ -120,6 +126,18 @@ pub(super) fn path_frame<'a>(value: String) -> Element<'a, Message> {
             ..Default::default()
         })
         .into()
+}
+
+pub(super) fn toolbar_zoom_button(
+    label: String,
+    message: Message,
+) -> iced::widget::Button<'static, Message> {
+    button(container(text(label).size(12)).center(Fill))
+        .width(58)
+        .height(30)
+        .padding(0)
+        .style(common::style_button(7.0))
+        .on_press(message)
 }
 
 pub(super) fn toolbar_square_button(
@@ -267,6 +285,31 @@ pub(super) fn popup_menu_action_owned(
         .on_press_maybe(message)
 }
 
+pub(super) fn popup_menu_icon_action(
+    icon: &'static [u8],
+    label: &'static str,
+    message: Option<Message>,
+) -> iced::widget::Button<'static, Message> {
+    button(
+        row![
+            svg(svg::Handle::from_memory(icon))
+                .width(15)
+                .height(15)
+                .style(|theme: &Theme, _status: svg::Status| svg::Style {
+                    color: Some(theme.palette().text),
+                }),
+            text(label).size(12),
+        ]
+        .spacing(8)
+        .align_y(iced::Alignment::Center),
+    )
+    .width(Fill)
+    .height(28)
+    .padding([5, 10])
+    .style(button::text)
+    .on_press_maybe(message)
+}
+
 pub(super) fn popup_menu_separator() -> Element<'static, Message> {
     container(Space::new().height(1))
         .width(Fill)
@@ -304,23 +347,44 @@ pub(super) fn toolbox_button(
     tool: DesignerTool,
 ) -> iced::widget::Button<'static, Message> {
     button(
-        row![
-            svg(svg::Handle::from_memory(icon))
-                .width(16)
-                .height(16)
-                .style(|theme: &Theme, _status: svg::Status| svg::Style {
-                    color: Some(theme.palette().text),
-                }),
-            text(label).size(12),
-        ]
-        .spacing(8)
-        .align_y(iced::Alignment::Center),
+        container(
+            row![
+                svg(svg::Handle::from_memory(icon))
+                    .width(16)
+                    .height(16)
+                    .style(|theme: &Theme, _status: svg::Status| svg::Style {
+                        color: Some(theme.palette().text),
+                    }),
+                text(label).size(12),
+            ]
+            .spacing(8)
+            .align_y(iced::Alignment::Center),
+        )
+        .width(Fill)
+        .center_y(30),
     )
     .width(Fill)
     .height(30)
     .padding([5, 8])
     .style(common::style_button(7.0))
     .on_press(Message::UseTool(tool))
+}
+
+pub(super) fn toolbox_heading(label: &'static str) -> Element<'static, Message> {
+    use iced::font;
+    container(
+        iced::widget::column![
+            text(label).size(12).font(iced::Font {
+                weight: font::Weight::Bold,
+                ..iced::Font::DEFAULT
+            }),
+            rule::horizontal(1),
+        ]
+        .spacing(2),
+    )
+    .width(Fill)
+    .padding([2, 1])
+    .into()
 }
 
 pub(super) fn toolbox_separator() -> Element<'static, Message> {

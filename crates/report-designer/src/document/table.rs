@@ -6,6 +6,12 @@ pub(crate) struct TableColumnSpec {
     pub(crate) title: String,
     pub(crate) width: String,
     pub(crate) alignment: HorizontalAlign,
+    pub(crate) value_type: ValueType,
+    pub(crate) decimal_places: String,
+    pub(crate) date_pattern: String,
+    pub(crate) prefix: String,
+    pub(crate) suffix: String,
+    pub(crate) grouping: bool,
 }
 
 pub(crate) fn create_query_table(
@@ -166,8 +172,18 @@ fn table_layout(
             text.value_type = if header {
                 ValueType::Text
             } else {
-                ValueType::Expression
+                column.value_type
             };
+            if !header {
+                text.value_format = ValueFormat {
+                    decimal_places: column.decimal_places.trim().parse().ok(),
+                    date_pattern: (!column.date_pattern.trim().is_empty())
+                        .then(|| column.date_pattern.trim().to_string()),
+                    prefix: column.prefix.clone(),
+                    suffix: column.suffix.clone(),
+                    grouping: column.grouping,
+                };
+            }
             text.query_source = QuerySource::Main;
             text.bold = header;
             text.horizontal_align = column.alignment;
@@ -224,6 +240,12 @@ mod tests {
                 title: (*field).to_string(),
                 width: "40.00".to_string(),
                 alignment: HorizontalAlign::Left,
+                value_type: ValueType::Expression,
+                decimal_places: String::new(),
+                date_pattern: String::new(),
+                prefix: String::new(),
+                suffix: String::new(),
+                grouping: false,
             })
             .collect()
     }
@@ -231,7 +253,11 @@ mod tests {
     #[test]
     fn creates_header_and_repeating_query_row() {
         let mut report = report_with_data_band();
-        let fields = columns(&["name", "age"]);
+        let mut fields = columns(&["name", "age"]);
+        fields[1].value_type = ValueType::Double;
+        fields[1].decimal_places = "2".to_string();
+        fields[1].suffix = " MDL".to_string();
+        fields[1].grouping = true;
 
         create_query_table(
             &mut report,
@@ -274,11 +300,18 @@ mod tests {
         let Item::Text(data_name) = &data.items[0] else {
             panic!("expected data text");
         };
+        let Item::Text(data_age) = &data.items[1] else {
+            panic!("expected formatted data text");
+        };
         assert_eq!(header_name.text, "name");
         assert!(header_name.bold);
         assert_eq!(data_name.text, "${name}");
         assert_eq!(data_name.value_type, ValueType::Expression);
         assert!(data_name.border.is_some());
+        assert_eq!(data_age.value_type, ValueType::Double);
+        assert_eq!(data_age.value_format.decimal_places, Some(2));
+        assert_eq!(data_age.value_format.suffix, " MDL");
+        assert!(data_age.value_format.grouping);
     }
 
     #[test]

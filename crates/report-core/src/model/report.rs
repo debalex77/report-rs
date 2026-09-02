@@ -50,6 +50,52 @@ pub enum DataConnection {
 pub struct DataQuery {
     pub name: String,
     pub sql: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub filters: Vec<QueryFilter>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sorts: Vec<QuerySort>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QuerySort {
+    pub field: String,
+    #[serde(default)]
+    pub direction: SortDirection,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum SortDirection {
+    #[default]
+    Ascending,
+    Descending,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QueryFilter {
+    pub field: String,
+    pub operator: FilterOperator,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub value: String,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub case_sensitive: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FilterOperator {
+    Equal,
+    NotEqual,
+    Contains,
+    StartsWith,
+    Greater,
+    GreaterOrEqual,
+    Less,
+    LessOrEqual,
+    IsNull,
+    IsNotNull,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 impl Report {
