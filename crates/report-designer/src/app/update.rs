@@ -28,13 +28,29 @@ impl DesignerApp {
                 }
             }
             Message::SaveAs => self.save_report_as(),
-            Message::Preview => match launch_preview(&self.report, self.path.as_deref()) {
-                Ok(()) => {
-                    self.error_message = None;
-                    self.status = "Preview opened".to_string();
+            Message::Preview => {
+                if self.preview_loading {
+                    return Task::none();
                 }
-                Err(error) => self.set_error(format!("Cannot open Preview: {error}")),
-            },
+                self.preview_loading = true;
+                self.status = "Opening Preview…".to_string();
+                let report = self.report.clone();
+                let path = self.path.clone();
+                return Task::perform(
+                    async move { launch_preview(&report, path.as_deref()) },
+                    Message::PreviewLaunched,
+                );
+            }
+            Message::PreviewLaunched(result) => {
+                self.preview_loading = false;
+                match result {
+                    Ok(()) => {
+                        self.error_message = None;
+                        self.status = "Preview opened".to_string();
+                    }
+                    Err(error) => self.set_error(format!("Cannot open Preview: {error}")),
+                }
+            }
             Message::ZoomIn => self.zoom = (self.zoom + 0.1).min(2.0),
             Message::ZoomOut => self.zoom = (self.zoom - 0.1).max(0.5),
             Message::ZoomReset => self.zoom = 1.0,
@@ -221,12 +237,13 @@ impl DesignerApp {
                     "Date" => ValueType::Date,
                     "DateTime" => ValueType::DateTime,
                     "Expression" => ValueType::Expression,
+                    "Function" => ValueType::Function,
                     _ => ValueType::Text,
                 };
                 self.record_undo();
                 if self.update_selected_text(|item| {
                     item.value_type = value_type;
-                    if value_type == ValueType::Expression {
+                    if matches!(value_type, ValueType::Expression | ValueType::Function) {
                         item.field = None;
                     }
                 }) {
@@ -351,6 +368,26 @@ impl DesignerApp {
                 self.query_field_picker = None;
             }
             Message::CloseQueryFieldPicker => self.query_field_picker = None,
+            Message::OpenFunctionPicker => self.function_picker_visible = true,
+            Message::SelectFunction(function) => {
+                self.record_undo();
+                self.text_inputs
+                    .text
+                    .perform(text_editor::Action::Edit(text_editor::Edit::Paste(
+                        std::sync::Arc::new(function),
+                    )));
+                let value = self.text_inputs.text.text();
+                if self.update_selected_text(|item| {
+                    item.text = value.clone();
+                    item.field = None;
+                }) {
+                    self.mark_dirty();
+                } else {
+                    self.undo_stack.pop();
+                }
+                self.function_picker_visible = false;
+            }
+            Message::CloseFunctionPicker => self.function_picker_visible = false,
             Message::FontSizeChanged(value) => {
                 self.text_inputs.font_size.clone_from(&value);
                 if let Ok(font_size) = value.parse::<f32>()
@@ -983,34 +1020,71 @@ impl DesignerApp {
                 self.query_text_menu_position = None;
             }
             Message::CopyQueryText => {
-                let text = self
-                    .data_query_editor
-                    .as_ref()
-                    .map(
-                        |editor| match self.query_text_menu.unwrap_or(QueryTextTarget::Sql) {
+                let target = self.query_text_menu.unwrap_or(QueryTextTarget::Sql);
+                let text = match target {
+                    QueryTextTarget::ItemText => self
+                        .text_inputs
+                        .text
+                        .selection()
+                        .unwrap_or_else(|| self.text_inputs.text.text()),
+                    QueryTextTarget::ItemName
+                    | QueryTextTarget::DatePattern
+                    | QueryTextTarget::ValuePrefix
+                    | QueryTextTarget::ValueSuffix
+                    | QueryTextTarget::TextColor => context_text_value(self, target),
+                    target => self
+                        .data_query_editor
+                        .as_ref()
+                        .map(|editor| match target {
                             QueryTextTarget::Name => editor.name.clone(),
                             QueryTextTarget::Sql => {
                                 editor.sql.selection().unwrap_or_else(|| editor.sql.text())
                             }
-                        },
-                    )
-                    .unwrap_or_default();
+                            QueryTextTarget::ItemText => unreachable!(),
+                            _ => unreachable!(),
+                        })
+                        .unwrap_or_default(),
+                };
                 self.query_text_menu = None;
                 self.query_text_menu_position = None;
                 return iced::clipboard::write(text);
             }
             Message::CutQueryText => {
-                let Some(editor) = &mut self.data_query_editor else {
-                    return Task::none();
-                };
-                let text = match self.query_text_menu.unwrap_or(QueryTextTarget::Sql) {
-                    QueryTextTarget::Name => std::mem::take(&mut editor.name),
-                    QueryTextTarget::Sql => {
-                        let text = editor.sql.selection().unwrap_or_else(|| editor.sql.text());
-                        editor
-                            .sql
-                            .perform(text_editor::Action::Edit(text_editor::Edit::Delete));
-                        text
+                let target = self.query_text_menu.unwrap_or(QueryTextTarget::Sql);
+                let text = if target == QueryTextTarget::ItemText {
+                    let text = self
+                        .text_inputs
+                        .text
+                        .selection()
+                        .unwrap_or_else(|| self.text_inputs.text.text());
+                    self.record_undo();
+                    self.text_inputs
+                        .text
+                        .perform(text_editor::Action::Edit(text_editor::Edit::Delete));
+                    let value = self.text_inputs.text.text();
+                    if self.update_selected_text(|item| item.text = value.clone()) {
+                        self.mark_dirty();
+                    }
+                    text
+                } else if let Some(message) = context_text_change_message(target, String::new()) {
+                    let text = context_text_value(self, target);
+                    let _ = self.update(message);
+                    text
+                } else {
+                    let Some(editor) = &mut self.data_query_editor else {
+                        return Task::none();
+                    };
+                    match target {
+                        QueryTextTarget::Name => std::mem::take(&mut editor.name),
+                        QueryTextTarget::Sql => {
+                            let text = editor.sql.selection().unwrap_or_else(|| editor.sql.text());
+                            editor
+                                .sql
+                                .perform(text_editor::Action::Edit(text_editor::Edit::Delete));
+                            text
+                        }
+                        QueryTextTarget::ItemText => unreachable!(),
+                        _ => unreachable!(),
                     }
                 };
                 self.query_text_menu = None;
@@ -1025,6 +1099,10 @@ impl DesignerApp {
                     if let Some(editor) = &mut self.data_query_editor {
                         editor.sql.perform(text_editor::Action::SelectAll);
                     }
+                } else if self.query_text_menu == Some(QueryTextTarget::ItemText) {
+                    self.text_inputs
+                        .text
+                        .perform(text_editor::Action::SelectAll);
                 } else if self.query_text_menu == Some(QueryTextTarget::Name) {
                     self.query_text_menu = None;
                     self.query_text_menu_position = None;
@@ -1033,20 +1111,47 @@ impl DesignerApp {
                             self.query_name_input_id.clone(),
                         ),
                     );
+                } else if let Some(id) = match self.query_text_menu {
+                    Some(QueryTextTarget::ItemName) => Some(self.item_name_input_id.clone()),
+                    Some(QueryTextTarget::DatePattern) => Some(self.date_pattern_input_id.clone()),
+                    Some(QueryTextTarget::ValuePrefix) => Some(self.value_prefix_input_id.clone()),
+                    Some(QueryTextTarget::ValueSuffix) => Some(self.value_suffix_input_id.clone()),
+                    Some(QueryTextTarget::TextColor) => Some(self.text_color_input_id.clone()),
+                    _ => None,
+                } {
+                    self.query_text_menu = None;
+                    self.query_text_menu_position = None;
+                    return iced::advanced::widget::operate(
+                        iced::advanced::widget::operation::text_input::select_all(id),
+                    );
                 }
                 self.query_text_menu = None;
                 self.query_text_menu_position = None;
             }
             Message::QueryTextPasted(value) => {
-                if let (Some(value), Some(editor)) = (value, &mut self.data_query_editor) {
-                    match self.query_text_menu.unwrap_or(QueryTextTarget::Sql) {
-                        QueryTextTarget::Name => editor.name = value,
-                        QueryTextTarget::Sql => {
-                            editor
-                                .sql
-                                .perform(text_editor::Action::Edit(text_editor::Edit::Paste(
-                                    std::sync::Arc::new(value),
-                                )))
+                if let Some(value) = value {
+                    if self.query_text_menu == Some(QueryTextTarget::ItemText) {
+                        self.record_undo();
+                        self.text_inputs.text.perform(text_editor::Action::Edit(
+                            text_editor::Edit::Paste(std::sync::Arc::new(value)),
+                        ));
+                        let text = self.text_inputs.text.text();
+                        if self.update_selected_text(|item| item.text = text.clone()) {
+                            self.mark_dirty();
+                        }
+                    } else if let Some(message) = self
+                        .query_text_menu
+                        .and_then(|target| context_text_change_message(target, value.clone()))
+                    {
+                        let _ = self.update(message);
+                    } else if let Some(editor) = &mut self.data_query_editor {
+                        match self.query_text_menu.unwrap_or(QueryTextTarget::Sql) {
+                            QueryTextTarget::Name => editor.name = value,
+                            QueryTextTarget::Sql => editor.sql.perform(text_editor::Action::Edit(
+                                text_editor::Edit::Paste(std::sync::Arc::new(value)),
+                            )),
+                            QueryTextTarget::ItemText => unreachable!(),
+                            _ => unreachable!(),
                         }
                     }
                 }
@@ -1539,6 +1644,7 @@ impl DesignerApp {
                             })
                             .collect(),
                         center_table: true,
+                        include_row_number: false,
                         template_name: String::new(),
                     });
                     self.error_message = None;
@@ -1649,6 +1755,11 @@ impl DesignerApp {
                     drop.center_table = center;
                 }
             }
+            Message::IncludeRowNumberChanged(include) => {
+                if let Some(drop) = &mut self.pending_data_field_drop {
+                    drop.include_row_number = include;
+                }
+            }
             Message::TableTemplateNameChanged(name) => {
                 if let Some(drop) = &mut self.pending_data_field_drop {
                     drop.template_name = name;
@@ -1666,6 +1777,7 @@ impl DesignerApp {
                 let template = TableTemplate {
                     name: name.clone(),
                     center_table: drop.center_table,
+                    include_row_number: drop.include_row_number,
                     columns: drop
                         .columns
                         .iter()
@@ -1740,6 +1852,7 @@ impl DesignerApp {
                     })
                     .collect();
                 drop.center_table = template.center_table;
+                drop.include_row_number = template.include_row_number;
                 drop.template_name = template.name;
                 self.error_message = None;
             }
@@ -1762,11 +1875,42 @@ impl DesignerApp {
                     .first()
                     .map(page_font_family)
                     .unwrap_or_else(|| "Sans".to_string());
+                let mut columns = drop.columns.clone();
+                if drop.include_row_number {
+                    let row_number_width = 12.0;
+                    let existing_width = columns
+                        .iter()
+                        .filter_map(|column| column.width.trim().parse::<f32>().ok())
+                        .sum::<f32>();
+                    if existing_width > row_number_width {
+                        let scale = (existing_width - row_number_width) / existing_width;
+                        for column in &mut columns {
+                            if let Ok(width) = column.width.trim().parse::<f32>() {
+                                column.width = format_mm(width * scale);
+                            }
+                        }
+                    }
+                    columns.insert(
+                        0,
+                        TableColumnSpec {
+                            field: "row_number".to_string(),
+                            title: "Nr.".to_string(),
+                            width: format_mm(row_number_width.min(existing_width)),
+                            alignment: HorizontalAlign::Right,
+                            value_type: ValueType::Integer,
+                            decimal_places: String::new(),
+                            date_pattern: String::new(),
+                            prefix: String::new(),
+                            suffix: String::new(),
+                            grouping: false,
+                        },
+                    );
+                }
                 match create_query_table(
                     &mut self.report,
                     drop.band,
                     &drop.query,
-                    &drop.columns,
+                    &columns,
                     include_header,
                     drop.center_table,
                     font_family,
@@ -2178,6 +2322,33 @@ impl DesignerApp {
         }
 
         Task::none()
+    }
+}
+
+fn context_text_value(app: &DesignerApp, target: QueryTextTarget) -> String {
+    match target {
+        QueryTextTarget::ItemName => app
+            .selection
+            .and_then(|selection| item_at_selection(&app.report, selection))
+            .map(item_name)
+            .unwrap_or_default()
+            .to_string(),
+        QueryTextTarget::DatePattern => app.text_inputs.date_pattern.clone(),
+        QueryTextTarget::ValuePrefix => app.text_inputs.value_prefix.clone(),
+        QueryTextTarget::ValueSuffix => app.text_inputs.value_suffix.clone(),
+        QueryTextTarget::TextColor => app.text_inputs.text_color.clone(),
+        _ => String::new(),
+    }
+}
+
+fn context_text_change_message(target: QueryTextTarget, value: String) -> Option<Message> {
+    match target {
+        QueryTextTarget::ItemName => Some(Message::ItemNameChanged(value)),
+        QueryTextTarget::DatePattern => Some(Message::ValueFormatDatePatternChanged(value)),
+        QueryTextTarget::ValuePrefix => Some(Message::ValueFormatPrefixChanged(value)),
+        QueryTextTarget::ValueSuffix => Some(Message::ValueFormatSuffixChanged(value)),
+        QueryTextTarget::TextColor => Some(Message::TextColorChanged(value)),
+        _ => None,
     }
 }
 

@@ -1,4 +1,4 @@
-use crate::datasource::{ReportContext, Row};
+use crate::datasource::{ReportContext, Row, Value};
 use crate::expressions;
 use crate::layout::text::{ApproxTextMeasurer, TextLayout, TextLine, TextMeasurer};
 use crate::model::{
@@ -504,7 +504,13 @@ impl LayoutEngine {
                             cursor_y =
                                 cursor_y + Self::measure_band(header, None, context, measurer);
                         }
-                        for row in rows {
+                        for (row_index, row) in rows.iter().enumerate() {
+                            let mut numbered_row = row.clone();
+                            numbered_row.insert(
+                                "row_number".to_string(),
+                                Value::Number((row_index + 1) as f64),
+                            );
+                            let row = &numbered_row;
                             let measured_height =
                                 Self::measure_band(band, Some(row), context, measurer);
 
@@ -1116,7 +1122,7 @@ mod tests {
                     width: Mm(100.0),
                     height: Mm(10.0),
 
-                    text: "Pacient: ${name}".to_string(),
+                    text: "${row_number}. Pacient: ${name}".to_string(),
 
                     value_type: ValueType::Text,
 
@@ -1174,7 +1180,7 @@ mod tests {
 
         match &pages[0].items[0] {
             RenderedItem::Text { text, .. } => {
-                assert_eq!(text, "Pacient: Ion Popescu");
+                assert_eq!(text, "1. Pacient: Ion Popescu");
             }
 
             _ => panic!("Expected text item"),
@@ -1182,7 +1188,7 @@ mod tests {
 
         match &pages[0].items[1] {
             RenderedItem::Text { text, .. } => {
-                assert_eq!(text, "Pacient: Maria Ionescu");
+                assert_eq!(text, "2. Pacient: Maria Ionescu");
             }
 
             _ => panic!("Expected text item"),

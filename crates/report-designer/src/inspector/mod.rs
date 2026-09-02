@@ -77,11 +77,15 @@ impl DesignerApp {
                     .push(
                         row![
                             text("Name").size(11).width(52),
-                            text_input("Item name", item_name(item))
-                                .width(Fill)
-                                .size(12)
-                                .padding(4)
-                                .on_input(Message::ItemNameChanged)
+                            mouse_area(
+                                text_input("Item name", item_name(item))
+                                    .id(self.item_name_input_id.clone())
+                                    .width(Fill)
+                                    .size(12)
+                                    .padding(4)
+                                    .on_input(Message::ItemNameChanged)
+                            )
+                            .on_right_press(Message::OpenQueryTextMenu(QueryTextTarget::ItemName))
                         ]
                         .spacing(6)
                         .align_y(iced::Alignment::Center),

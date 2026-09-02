@@ -31,6 +31,7 @@ pub(super) fn append<'a>(
                 "Date",
                 "DateTime",
                 "Expression",
+                "Function",
             ]
             .into_iter()
             .map(str::to_string)
@@ -86,12 +87,16 @@ pub(super) fn append<'a>(
                     .spacing(6)
                     .align_y(iced::Alignment::Center),
                 );
-            let editor = text_editor(&app.text_inputs.text)
-                .placeholder("Text / Value")
-                .size(12)
-                .padding(6)
-                .height(84)
-                .on_action(Message::TextEdited);
+            let editor: Element<'_, Message> = mouse_area(
+                text_editor(&app.text_inputs.text)
+                    .placeholder("Text / Value")
+                    .size(12)
+                    .padding(6)
+                    .height(84)
+                    .on_action(Message::TextEdited),
+            )
+            .on_right_press(Message::OpenQueryTextMenu(QueryTextTarget::ItemText))
+            .into();
             if text_item.value_type == ValueType::Expression {
                 content = content.push(text("Expression").size(11));
                 if resolved_query.is_some() {
@@ -110,6 +115,21 @@ pub(super) fn append<'a>(
                 } else {
                     content = content.push(editor);
                 }
+            } else if text_item.value_type == ValueType::Function {
+                let delegate = container(
+                    button(container(text("•••").size(9)).center(Fill))
+                        .width(30)
+                        .height(26)
+                        .padding(0)
+                        .style(common::style_button(5.0))
+                        .on_press(Message::OpenFunctionPicker),
+                )
+                .padding(4)
+                .align_right(Fill)
+                .align_top(Fill);
+                content = content
+                    .push(text("Function").size(11))
+                    .push(stack![editor, delegate]);
             } else {
                 content = content.push(text("Text / Value").size(11)).push(editor);
             }
@@ -170,22 +190,34 @@ pub(super) fn append<'a>(
             ValueType::Date | ValueType::DateTime | ValueType::Expression
         ) {
             content = content.push(text("Date pattern").size(11)).push(
-                text_input("dd.MM.yyyy", &app.text_inputs.date_pattern)
-                    .size(11)
-                    .padding(4)
-                    .on_input(Message::ValueFormatDatePatternChanged),
+                mouse_area(
+                    text_input("dd.MM.yyyy", &app.text_inputs.date_pattern)
+                        .id(app.date_pattern_input_id.clone())
+                        .size(11)
+                        .padding(4)
+                        .on_input(Message::ValueFormatDatePatternChanged),
+                )
+                .on_right_press(Message::OpenQueryTextMenu(QueryTextTarget::DatePattern)),
             );
         }
         content = content.push(text("Prefix / suffix").size(11)).push(
             row![
-                text_input("Prefix", &app.text_inputs.value_prefix)
-                    .size(11)
-                    .padding(4)
-                    .on_input(Message::ValueFormatPrefixChanged),
-                text_input("Suffix", &app.text_inputs.value_suffix)
-                    .size(11)
-                    .padding(4)
-                    .on_input(Message::ValueFormatSuffixChanged),
+                mouse_area(
+                    text_input("Prefix", &app.text_inputs.value_prefix)
+                        .id(app.value_prefix_input_id.clone())
+                        .size(11)
+                        .padding(4)
+                        .on_input(Message::ValueFormatPrefixChanged)
+                )
+                .on_right_press(Message::OpenQueryTextMenu(QueryTextTarget::ValuePrefix)),
+                mouse_area(
+                    text_input("Suffix", &app.text_inputs.value_suffix)
+                        .id(app.value_suffix_input_id.clone())
+                        .size(11)
+                        .padding(4)
+                        .on_input(Message::ValueFormatSuffixChanged)
+                )
+                .on_right_press(Message::OpenQueryTextMenu(QueryTextTarget::ValueSuffix)),
             ]
             .spacing(5),
         );
@@ -275,10 +307,14 @@ pub(super) fn append<'a>(
     if !app.collapsed_groups.is_collapsed(PropertyGroup::TextColor) {
         content = content
             .push(
-                text_input("#RRGGBB", &app.text_inputs.text_color)
-                    .size(12)
-                    .padding(4)
-                    .on_input(Message::TextColorChanged),
+                mouse_area(
+                    text_input("#RRGGBB", &app.text_inputs.text_color)
+                        .id(app.text_color_input_id.clone())
+                        .size(12)
+                        .padding(4)
+                        .on_input(Message::TextColorChanged),
+                )
+                .on_right_press(Message::OpenQueryTextMenu(QueryTextTarget::TextColor)),
             )
             .push(iced::widget::column![palette_top, palette_bottom].spacing(4))
             .push(text("Custom color").size(11))
@@ -360,5 +396,72 @@ fn value_type_name(value_type: ValueType) -> &'static str {
         ValueType::Date => "Date",
         ValueType::DateTime => "DateTime",
         ValueType::Expression => "Expression",
+        ValueType::Function => "Function",
+    }
+}
+
+impl DesignerApp {
+    pub(crate) fn function_picker_dialog(&self) -> Element<'_, Message> {
+        let mut functions = iced::widget::column![].spacing(6);
+        for (label, expression) in [("Row number", "${row_number}")] {
+            functions = functions.push(
+                button(container(
+                    row![
+                        iced::widget::column![
+                            text(label).size(13),
+                            text("Sequential number of the current DataBand row")
+                                .size(10)
+                                .color(Color::from_rgb8(155, 160, 170)),
+                        ]
+                        .spacing(2)
+                        .width(Fill),
+                        container(text(expression).size(11)).padding([4, 8]).style(
+                            |theme: &Theme| container::Style {
+                                background: Some(Background::Color(
+                                    theme.extended_palette().background.weak.color,
+                                )),
+                                border: iced::Border {
+                                    radius: iced::border::radius(5),
+                                    ..Default::default()
+                                },
+                                ..Default::default()
+                            }
+                        ),
+                    ]
+                    .spacing(16)
+                    .align_y(iced::Alignment::Center),
+                ))
+                .width(Fill)
+                .padding([8, 10])
+                .style(common::style_button(7.0))
+                .on_press(Message::SelectFunction(expression.to_string())),
+            );
+        }
+        dialog_container(
+            iced::widget::column![
+                text("Select function").size(20),
+                text("Choose a built-in value to insert at the cursor position.")
+                    .size(11)
+                    .color(Color::from_rgb8(155, 160, 170)),
+                rule::horizontal(1),
+                functions,
+                row![
+                    Space::new().width(Fill),
+                    button(
+                        container(text("Cancel").size(12))
+                            .width(Fill)
+                            .center_x(Fill),
+                    )
+                    .width(88)
+                    .height(30)
+                    .padding(0)
+                    .style(common::style_button(6.0))
+                    .on_press(Message::CloseFunctionPicker),
+                ]
+            ]
+            .spacing(14)
+            .padding(20),
+            500.0,
+        )
     }
 }

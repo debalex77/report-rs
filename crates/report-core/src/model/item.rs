@@ -83,6 +83,7 @@ pub enum ValueType {
     Date,
     DateTime,
     Expression,
+    Function,
 }
 
 impl ValueType {

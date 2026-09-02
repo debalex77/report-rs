@@ -42,13 +42,26 @@ impl DesignerApp {
                 (!self.redo_stack.is_empty()).then_some(Message::Redo)
             ),
             toolbar_separator(),
-            toolbar_icon_button(
-                include_bytes!("../../../../assets/edit-select-all-symbolic.svg"),
-                Message::ToggleGuides,
+            tooltip(
+                toolbar_icon_button(
+                    include_bytes!("../../../../assets/edit-select-all-symbolic.svg"),
+                    Message::ToggleGuides,
+                ),
+                text(if self.guides_visible {
+                    "Hide rulers"
+                } else {
+                    "Show rulers"
+                })
+                .size(11),
+                tooltip::Position::Bottom,
             ),
-            toolbar_icon_button(
-                include_bytes!("../../../../assets/preferences-system-symbolic.svg"),
-                Message::OpenSettings,
+            tooltip(
+                toolbar_icon_button(
+                    include_bytes!("../../../../assets/preferences-system-symbolic.svg"),
+                    Message::OpenSettings,
+                ),
+                text("Report settings").size(11),
+                tooltip::Position::Bottom,
             ),
             toolbar_square_button("−", Message::ZoomOut),
             toolbar_zoom_button(

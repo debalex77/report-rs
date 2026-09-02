@@ -28,6 +28,12 @@ pub(crate) enum DataQueryTab {
 pub(crate) enum QueryTextTarget {
     Name,
     Sql,
+    ItemText,
+    ItemName,
+    DatePattern,
+    ValuePrefix,
+    ValueSuffix,
+    TextColor,
 }
 
 impl DataQueryEditor {
@@ -1018,6 +1024,7 @@ impl DesignerApp {
                 "Boolean",
                 "Date",
                 "DateTime",
+                "Function",
             ]
             .into_iter()
             .map(str::to_string)
@@ -1097,6 +1104,14 @@ impl DesignerApp {
                     .size(16)
                     .spacing(7)
                     .on_toggle(Message::CenterDroppedTableChanged),
+            )
+            .push(
+                toggler(drop.include_row_number)
+                    .label("Add row number automatically")
+                    .text_size(11)
+                    .size(16)
+                    .spacing(7)
+                    .on_toggle(Message::IncludeRowNumberChanged),
             )
             .push(
                 row![

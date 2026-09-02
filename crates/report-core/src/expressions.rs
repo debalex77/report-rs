@@ -98,7 +98,7 @@ fn format_value(
         ValueType::Date | ValueType::DateTime => {
             format_date(raw, value_type, format).unwrap_or_else(|| raw.to_string())
         }
-        ValueType::Expression => {
+        ValueType::Expression | ValueType::Function => {
             if format.date_pattern.is_some() {
                 format_date(raw, ValueType::DateTime, format)
                     .or_else(|| format_date(raw, ValueType::Date, format))

@@ -71,6 +71,19 @@ impl DesignerApp {
         } else {
             self.status.clone()
         };
+        let preview_progress: Element<'_, Message> = if self.preview_loading {
+            container(
+                row![
+                    text("Preparing preview").size(11),
+                    progress_bar(0.0..=100.0, 65.0).length(180).girth(6),
+                ]
+                .spacing(8)
+                .align_y(iced::Alignment::Center),
+            )
+            .into()
+        } else {
+            Space::new().width(0).into()
+        };
         let status_bar = row![
             status_icon_button(
                 include_bytes!("../../../../assets/toolbox-symbolic.svg"),
@@ -78,6 +91,7 @@ impl DesignerApp {
             )
             .on_press(Message::ToggleToolbox),
             text(status).size(12),
+            preview_progress,
             Space::new().width(Fill),
             report_status_frame(self.dirty || self.path.is_none()),
             status_icon_button(
@@ -121,7 +135,16 @@ impl DesignerApp {
         } else {
             base
         };
-        let content: Element<'_, Message> = if self.query_rules_editor.is_some() {
+        let content: Element<'_, Message> = if self.function_picker_visible {
+            let modal = opaque(
+                container(self.function_picker_dialog())
+                    .center(Fill)
+                    .width(Fill)
+                    .height(Fill)
+                    .style(modal_backdrop_style),
+            );
+            stack![base, modal].into()
+        } else if self.query_rules_editor.is_some() {
             let modal = opaque(
                 container(self.query_rules_dialog())
                     .center(Fill)

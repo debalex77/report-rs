@@ -11,6 +11,8 @@ pub(crate) struct TableTemplate {
     pub(crate) columns: Vec<TableTemplateColumn>,
     #[serde(default = "default_true")]
     pub(crate) center_table: bool,
+    #[serde(default)]
+    pub(crate) include_row_number: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -98,6 +100,7 @@ pub(crate) fn value_type_name(value_type: ValueType) -> &'static str {
         ValueType::Date => "Date",
         ValueType::DateTime => "DateTime",
         ValueType::Expression => "Expression",
+        ValueType::Function => "Function",
     }
 }
 
@@ -109,6 +112,7 @@ pub(crate) fn parse_value_type(value_type: &str) -> ValueType {
         "Date" => ValueType::Date,
         "DateTime" => ValueType::DateTime,
         "Text" => ValueType::Text,
+        "Function" => ValueType::Function,
         _ => ValueType::Expression,
     }
 }

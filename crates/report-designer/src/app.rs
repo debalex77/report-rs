@@ -4,8 +4,8 @@ use std::path::PathBuf;
 use iced::mouse;
 use iced::widget::canvas::{self, Canvas, Frame, Geometry, Path};
 use iced::widget::{
-    Space, button, checkbox, combo_box, container, mouse_area, opaque, pick_list, row, rule,
-    scrollable, stack, svg, text, text_editor, text_input, toggler, tooltip,
+    Space, button, checkbox, combo_box, container, mouse_area, opaque, pick_list, progress_bar,
+    row, rule, scrollable, stack, svg, text, text_editor, text_input, toggler, tooltip,
 };
 use iced::{
     Background, Color, Element, Fill, Point, Rectangle, Renderer, Size, Task, Theme, keyboard,
@@ -199,6 +199,7 @@ struct PendingDataFieldDrop {
     query: String,
     columns: Vec<TableColumnSpec>,
     center_table: bool,
+    include_row_number: bool,
     template_name: String,
 }
 
@@ -339,6 +340,11 @@ struct DesignerApp {
     query_text_menu: Option<QueryTextTarget>,
     query_text_menu_position: Option<Point>,
     query_name_input_id: iced::widget::Id,
+    item_name_input_id: iced::widget::Id,
+    date_pattern_input_id: iced::widget::Id,
+    value_prefix_input_id: iced::widget::Id,
+    value_suffix_input_id: iced::widget::Id,
+    text_color_input_id: iced::widget::Id,
     query_rules_editor: Option<QueryRulesEditor>,
     query_fields: HashMap<String, Vec<String>>,
     query_field_types: HashMap<(String, String), ValueType>,
@@ -351,6 +357,8 @@ struct DesignerApp {
     pending_data_field_drop: Option<PendingDataFieldDrop>,
     table_templates: Vec<TableTemplate>,
     query_field_picker: Option<QueryFieldPicker>,
+    function_picker_visible: bool,
+    preview_loading: bool,
     open_menu: Option<AppMenu>,
     about_visible: bool,
     toolbox_visible: bool,
@@ -431,6 +439,11 @@ impl Default for DesignerApp {
             query_text_menu: None,
             query_text_menu_position: None,
             query_name_input_id: iced::widget::Id::unique(),
+            item_name_input_id: iced::widget::Id::unique(),
+            date_pattern_input_id: iced::widget::Id::unique(),
+            value_prefix_input_id: iced::widget::Id::unique(),
+            value_suffix_input_id: iced::widget::Id::unique(),
+            text_color_input_id: iced::widget::Id::unique(),
             query_rules_editor: None,
             query_fields: HashMap::new(),
             query_field_types: HashMap::new(),
@@ -443,6 +456,8 @@ impl Default for DesignerApp {
             pending_data_field_drop: None,
             table_templates: load_table_templates().unwrap_or_default(),
             query_field_picker: None,
+            function_picker_visible: false,
+            preview_loading: false,
             open_menu: None,
             about_visible: false,
             toolbox_visible: true,
