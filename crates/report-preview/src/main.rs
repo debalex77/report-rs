@@ -4,7 +4,9 @@ use std::path::{Path as FsPath, PathBuf};
 use iced::mouse;
 use iced::widget::canvas::{self, Canvas, Frame, Geometry, Path};
 use iced::widget::image::Handle;
-use iced::widget::{button, column, container, row, scrollable, text};
+use iced::widget::{
+    Space, button, column, container, opaque, row, scrollable, stack, text, text_input,
+};
 use iced::{
     Color, Element, Fill, Font, Point, Rectangle, Renderer, Size, Task, Theme,
     font::{Style, Weight},
@@ -12,9 +14,11 @@ use iced::{
 
 use report_core::common;
 
-use report_core::datasource::{ReportContext, Row, Value, load_report_data_sources};
+use report_core::datasource::{
+    ReportContext, Row, Value, load_report_data_sources, parse_report_parameter_value,
+};
 use report_core::layout::{LayoutEngine, RenderedItem, RenderedPage};
-use report_core::model::{HorizontalAlign, Report, VerticalAlign};
+use report_core::model::{HorizontalAlign, Report, ReportParameterType, VerticalAlign};
 
 use report_core::font::measurer::RealFontMeasurer;
 use report_core::image::layout::calculate_image_placement;
@@ -74,6 +78,7 @@ struct PreviewImage {
 }
 
 struct PreviewApp {
+    report: Report,
     pages: Vec<RenderedPage>,
     current_page: usize,
     zoom: f32,
@@ -81,6 +86,8 @@ struct PreviewApp {
     images: HashMap<String, PreviewImage>,
     report_dir: PathBuf,
     error_message: Option<String>,
+    parameter_values: Vec<String>,
+    parameters_pending: bool,
 }
 
 fn load_preview_images(
@@ -143,27 +150,24 @@ impl Default for PreviewApp {
             .to_string()
         });
 
-        let measurer = RealFontMeasurer::new();
         let report = Report::from_file(&path).expect("Cannot load report");
         let report_dir = FsPath::new(&path)
             .parent()
             .expect("Report path should have a parent directory");
-        let mut context = if report.data_sources.is_empty() {
-            example_context()
-        } else {
-            ReportContext::new()
-        };
-        let error_message = load_report_data_sources(&report, report_dir, &mut context)
-            .err()
-            .map(|error| format!("Data source failed: {error}"));
-        let pages = report
-            .pages
+        let parameter_values = report
+            .parameters
             .iter()
-            .flat_map(|page| LayoutEngine::render_with_measurer(page, &context, &measurer))
-            .collect::<Vec<_>>();
-        let images = load_preview_images(&pages, report_dir);
+            .map(|parameter| parameter.default_value.clone().unwrap_or_default())
+            .collect();
+        let parameters_pending = report.parameters.iter().any(|parameter| parameter.required);
+        let (pages, images, error_message) = if parameters_pending {
+            (Vec::new(), HashMap::new(), None)
+        } else {
+            render_report(&report, report_dir, ReportContext::new())
+        };
 
         Self {
+            report,
             pages,
             current_page: 0,
             zoom: 1.0,
@@ -171,6 +175,8 @@ impl Default for PreviewApp {
             images,
             report_dir: report_dir.to_path_buf(),
             error_message,
+            parameter_values,
+            parameters_pending,
         }
     }
 }
@@ -186,6 +192,43 @@ enum Message {
     ExportPdf,
     OpenPdf,
     DismissError,
+    ParameterChanged(usize, String),
+    ApplyParameters,
+    OpenParameters,
+    CloseParameters,
+}
+
+fn render_report(
+    report: &Report,
+    report_dir: &FsPath,
+    mut context: ReportContext,
+) -> (
+    Vec<RenderedPage>,
+    HashMap<String, PreviewImage>,
+    Option<String>,
+) {
+    if report.data_sources.is_empty() {
+        let example = example_context();
+        for (name, value) in example.parameters() {
+            if context.parameter(name).is_none() {
+                context.set_parameter(name, value.clone());
+            }
+        }
+        if let Some(rows) = example.table("horeca_units") {
+            context.add_table("horeca_units", rows.clone());
+        }
+    }
+    let error_message = load_report_data_sources(report, report_dir, &mut context)
+        .err()
+        .map(|error| format!("Data source failed: {error}"));
+    let measurer = RealFontMeasurer::new();
+    let pages = report
+        .pages
+        .iter()
+        .flat_map(|page| LayoutEngine::render_with_measurer(page, &context, &measurer))
+        .collect::<Vec<_>>();
+    let images = load_preview_images(&pages, report_dir);
+    (pages, images, error_message)
 }
 
 struct PageCanvas<'a> {
@@ -616,16 +659,77 @@ impl PreviewApp {
             }
 
             Message::DismissError => self.error_message = None,
+            Message::ParameterChanged(index, value) => {
+                if let Some(target) = self.parameter_values.get_mut(index) {
+                    *target = value;
+                }
+            }
+            Message::ApplyParameters => {
+                let mut context = ReportContext::new();
+                for (index, parameter) in self.report.parameters.iter().enumerate() {
+                    let value = self
+                        .parameter_values
+                        .get(index)
+                        .map(|value| value.trim())
+                        .unwrap_or_default();
+                    if value.is_empty() {
+                        if parameter.required {
+                            self.error_message =
+                                Some(format!("Parameter `{}` is required", parameter.name));
+                            return Task::none();
+                        }
+                        continue;
+                    }
+                    match parse_report_parameter_value(parameter, value) {
+                        Ok(value) => context.set_parameter(&parameter.name, value),
+                        Err(error) => {
+                            self.error_message = Some(error.to_string());
+                            return Task::none();
+                        }
+                    }
+                }
+                let (pages, images, error) = render_report(&self.report, &self.report_dir, context);
+                self.pages = pages;
+                self.images = images;
+                self.error_message = error;
+                self.current_page = 0;
+                self.parameters_pending = false;
+            }
+            Message::OpenParameters => {
+                self.error_message = None;
+                self.parameters_pending = true;
+            }
+            Message::CloseParameters => {
+                if !self.pages.is_empty() {
+                    self.error_message = None;
+                    self.parameters_pending = false;
+                }
+            }
         }
 
         Task::none()
     }
 
     fn view(&self) -> Element<'_, Message> {
-        if self.pages.is_empty() {
-            return container(text("No pages to preview")).center(Fill).into();
+        let base: Element<'_, Message> = if self.pages.is_empty() {
+            container(text(if self.parameters_pending {
+                "Complete the report parameters to generate the preview"
+            } else {
+                "No pages to preview"
+            }))
+            .center(Fill)
+            .into()
+        } else {
+            self.preview_content()
+        };
+        if self.parameters_pending {
+            stack![base, self.parameter_dialog()].into()
+        } else {
+            base
         }
+    }
 
+    fn preview_content(&self) -> Element<'_, Message> {
         let page = &self.pages[self.current_page];
 
         let scale = PX_PER_MM * self.zoom;
@@ -682,7 +786,15 @@ impl PreviewApp {
                 .on_press(Message::ExportPdf),
             button("Open PDF")
                 .style(common::style_button(6.0))
-                .on_press(Message::OpenPdf)
+                .on_press(Message::OpenPdf),
+            if self.report.parameters.is_empty() {
+                Element::<Message>::from(Space::new().width(0))
+            } else {
+                button("Parameters")
+                    .style(common::style_button(6.0))
+                    .on_press(Message::OpenParameters)
+                    .into()
+            }
         ]
         .spacing(10)
         .align_y(iced::Alignment::Center);
@@ -705,6 +817,99 @@ impl PreviewApp {
             );
         }
         content.push(viewport).into()
+    }
+
+    fn parameter_dialog(&self) -> Element<'_, Message> {
+        let mut fields = column![
+            text("Report parameters").size(20),
+            text("Complete the values before generating the preview.").size(11),
+        ]
+        .spacing(8);
+        for (index, parameter) in self.report.parameters.iter().enumerate() {
+            let kind = match parameter.value_type {
+                ReportParameterType::Text => "Text",
+                ReportParameterType::Integer => "Integer",
+                ReportParameterType::Double => "Double",
+                ReportParameterType::Boolean => "Boolean (true/false)",
+                ReportParameterType::Date => "Date (YYYY-MM-DD)",
+                ReportParameterType::DateTime => "Date-time",
+            };
+            fields = fields.push(
+                row![
+                    column![
+                        text(format!(
+                            "{}{}",
+                            parameter.name,
+                            if parameter.required { " *" } else { "" }
+                        ))
+                        .size(12),
+                        text(kind).size(9),
+                    ]
+                    .width(150),
+                    text_input(
+                        "Value",
+                        self.parameter_values
+                            .get(index)
+                            .map(String::as_str)
+                            .unwrap_or(""),
+                    )
+                    .width(Fill)
+                    .size(12)
+                    .padding(6)
+                    .on_input(move |value| Message::ParameterChanged(index, value)),
+                ]
+                .spacing(8)
+                .align_y(iced::Alignment::Center),
+            );
+        }
+        if let Some(error) = &self.error_message {
+            fields = fields.push(text(error).size(11).color(Color::from_rgb8(220, 75, 70)));
+        }
+        fields = fields.push(
+            row![
+                Space::new().width(Fill),
+                if self.pages.is_empty() {
+                    Element::<Message>::from(Space::new().width(0))
+                } else {
+                    button(text("Cancel").size(12))
+                        .style(common::style_button(6.0))
+                        .on_press(Message::CloseParameters)
+                        .into()
+                },
+                button(text("Generate preview").size(12))
+                    .style(common::style_button(6.0))
+                    .on_press(Message::ApplyParameters),
+            ]
+            .align_y(iced::Alignment::Center),
+        );
+        let dialog = container(fields)
+            .padding(18)
+            .width(520)
+            .style(|theme: &Theme| container::Style {
+                background: Some(iced::Background::Color(theme.palette().background)),
+                border: iced::Border {
+                    color: theme.extended_palette().background.strong.color,
+                    width: 1.0,
+                    radius: iced::border::radius(12),
+                },
+                shadow: iced::Shadow {
+                    color: Color::from_rgba8(0, 0, 0, 0.35),
+                    offset: iced::Vector::new(0.0, 7.0),
+                    blur_radius: 20.0,
+                },
+                ..Default::default()
+            });
+        opaque(
+            container(dialog)
+                .center(Fill)
+                .width(Fill)
+                .height(Fill)
+                .style(|_theme: &Theme| container::Style {
+                    background: Some(iced::Background::Color(Color::from_rgba8(0, 0, 0, 0.55))),
+                    ..Default::default()
+                }),
+        )
+        .into()
     }
 }
 

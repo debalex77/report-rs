@@ -105,6 +105,11 @@ fn reflow_item(item: &mut Item, changed: &mut bool) -> f32 {
             required
         }
         Item::HorizontalLayout(layout) => {
+            if layout.items.iter().any(item_has_auto_height) {
+                for child in &mut layout.items {
+                    enable_auto_height(child, changed);
+                }
+            }
             let mut required = layout.height.0;
             for child in &mut layout.items {
                 let (_, y, _, _) = normalized_geometry(child);
@@ -140,6 +145,33 @@ fn reflow_item(item: &mut Item, changed: &mut bool) -> f32 {
     }
 }
 
+fn item_has_auto_height(item: &Item) -> bool {
+    match item {
+        Item::Text(text) => text.auto_height,
+        Item::HorizontalLayout(layout) | Item::VerticalLayout(layout) => {
+            layout.items.iter().any(item_has_auto_height)
+        }
+        _ => false,
+    }
+}
+
+fn enable_auto_height(item: &mut Item, changed: &mut bool) {
+    match item {
+        Item::Text(text) => {
+            if !text.auto_height {
+                text.auto_height = true;
+                *changed = true;
+            }
+        }
+        Item::HorizontalLayout(layout) | Item::VerticalLayout(layout) => {
+            for child in &mut layout.items {
+                enable_auto_height(child, changed);
+            }
+        }
+        _ => {}
+    }
+}
+
 fn grow_layout(layout: &mut LayoutItem, required: f32, changed: &mut bool) -> f32 {
     if required > layout.height.0 + f32::EPSILON {
         layout.height = Mm(required);
@@ -167,5 +199,38 @@ mod tests {
 
         assert_eq!(first.lines.len(), second.lines.len());
         assert_eq!(text_layout_cache_len(), 1);
+    }
+
+    #[test]
+    fn horizontal_layout_propagates_auto_height_to_sibling_texts() {
+        let mut first = new_text_item("DejaVu Sans".to_string());
+        let mut second = new_text_item("DejaVu Sans".to_string());
+        if let Item::Text(text) = &mut first {
+            text.auto_height = true;
+        }
+        set_item_frame(&mut first, 0.0, 0.0, 40.0, 8.0);
+        set_item_frame(&mut second, 40.0, 0.0, 40.0, 8.0);
+        let mut layout = Item::HorizontalLayout(LayoutItem {
+            name: "horizontalLayout1".to_string(),
+            x: Mm(0.0),
+            y: Mm(0.0),
+            width: Mm(80.0),
+            height: Mm(8.0),
+            items: vec![first, second],
+        });
+        let mut changed = false;
+
+        reflow_item(&mut layout, &mut changed);
+
+        let Item::HorizontalLayout(layout) = layout else {
+            unreachable!();
+        };
+        assert!(changed);
+        assert!(
+            layout
+                .items
+                .iter()
+                .all(|item| { matches!(item, Item::Text(text) if text.auto_height) })
+        );
     }
 }

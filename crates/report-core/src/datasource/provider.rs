@@ -1,8 +1,10 @@
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::path::Path;
 
 use crate::model::{
-    DataConnection, DataQuery, FilterOperator, QueryFilter, QuerySort, Report, SortDirection,
+    DataConnection, DataQuery, FilterOperator, QueryFilter, QuerySort, Report, ReportParameter,
+    ReportParameterType, SortDirection,
 };
 
 use super::context::{ReportContext, Row, Value};
@@ -25,6 +27,14 @@ pub enum DataSourceError {
         query: String,
         column: String,
     },
+    #[error("required report parameter `{parameter}` has no value")]
+    MissingParameter { parameter: String },
+    #[error("report parameter `{parameter}` has invalid {expected} value `{value}`")]
+    InvalidParameter {
+        parameter: String,
+        expected: &'static str,
+        value: String,
+    },
 }
 
 /// Runtime adapter capable of executing a query and returning report rows.
@@ -39,6 +49,16 @@ pub trait DataProvider {
 
     fn query(&self, source: &str, query_name: &str, sql: &str)
     -> Result<Vec<Row>, DataSourceError>;
+
+    fn query_with_parameters(
+        &self,
+        source: &str,
+        query_name: &str,
+        sql: &str,
+        _parameters: &HashMap<String, Value>,
+    ) -> Result<Vec<Row>, DataSourceError> {
+        self.query(source, query_name, sql)
+    }
 }
 
 /// Executes every declarative query and adds its result to the report context.
@@ -50,6 +70,7 @@ pub fn load_report_data_sources(
     base_dir: &Path,
     context: &mut ReportContext,
 ) -> Result<(), DataSourceError> {
+    apply_parameter_defaults(report, context)?;
     for source in &report.data_sources {
         match &source.connection {
             DataConnection::Sqlite { path } => {
@@ -61,7 +82,12 @@ pub fn load_report_data_sources(
                 };
                 let provider = SqliteDataProvider::open(&source.name, &resolved)?;
                 for query in &source.queries {
-                    let mut rows = provider.query(&source.name, &query.name, &query.sql)?;
+                    let mut rows = provider.query_with_parameters(
+                        &source.name,
+                        &query.name,
+                        &query.sql,
+                        context.parameters(),
+                    )?;
                     apply_query_transformations(&mut rows, query);
                     context.add_table(&query.name, rows);
                 }
@@ -69,6 +95,68 @@ pub fn load_report_data_sources(
         }
     }
     Ok(())
+}
+
+/// Validates supplied parameter values and fills missing values from defaults.
+pub fn apply_parameter_defaults(
+    report: &Report,
+    context: &mut ReportContext,
+) -> Result<(), DataSourceError> {
+    for parameter in &report.parameters {
+        if context.parameter(&parameter.name).is_some() {
+            continue;
+        }
+        if let Some(value) = &parameter.default_value {
+            context.set_parameter(
+                &parameter.name,
+                parse_report_parameter_value(parameter, value)?,
+            );
+        } else if parameter.required {
+            return Err(DataSourceError::MissingParameter {
+                parameter: parameter.name.clone(),
+            });
+        } else {
+            context.set_parameter(&parameter.name, Value::Null);
+        }
+    }
+    Ok(())
+}
+
+pub fn parse_report_parameter_value(
+    parameter: &ReportParameter,
+    value: &str,
+) -> Result<Value, DataSourceError> {
+    let invalid = |expected| DataSourceError::InvalidParameter {
+        parameter: parameter.name.clone(),
+        expected,
+        value: value.to_string(),
+    };
+    match parameter.value_type {
+        ReportParameterType::Text => Ok(Value::String(value.to_string())),
+        ReportParameterType::Integer => value
+            .parse::<i64>()
+            .map(|value| Value::Number(value as f64))
+            .map_err(|_| invalid("integer")),
+        ReportParameterType::Double => value
+            .parse::<f64>()
+            .map(Value::Number)
+            .map_err(|_| invalid("number")),
+        ReportParameterType::Boolean => match value.trim().to_ascii_lowercase().as_str() {
+            "true" | "1" => Ok(Value::Bool(true)),
+            "false" | "0" => Ok(Value::Bool(false)),
+            _ => Err(invalid("boolean")),
+        },
+        ReportParameterType::Date => chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d")
+            .map(|_| Value::String(value.to_string()))
+            .map_err(|_| invalid("date (YYYY-MM-DD)")),
+        ReportParameterType::DateTime => chrono::DateTime::parse_from_rfc3339(value)
+            .map(|_| Value::String(value.to_string()))
+            .or_else(|_| {
+                chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S")
+                    .map(|_| Value::String(value.to_string()))
+            })
+            .map_err(|_| invalid("date-time")),
+    }
 }
 
 pub fn apply_query_transformations(rows: &mut Vec<Row>, query: &DataQuery) {
@@ -209,6 +297,32 @@ mod tests {
     }
 
     #[test]
+    fn parameter_defaults_are_typed_and_required_values_are_checked() {
+        let mut report = Report {
+            name: "Parameters".to_string(),
+            parameters: vec![ReportParameter {
+                name: "minimum".to_string(),
+                value_type: ReportParameterType::Integer,
+                default_value: Some("2".to_string()),
+                required: true,
+            }],
+            data_sources: Vec::new(),
+            pages: Vec::new(),
+        };
+        let mut context = ReportContext::new();
+
+        apply_parameter_defaults(&report, &mut context).unwrap();
+        assert!(matches!(
+            context.parameter("minimum"),
+            Some(Value::Number(2.0))
+        ));
+
+        report.parameters[0].default_value = None;
+        let error = apply_parameter_defaults(&report, &mut ReportContext::new()).unwrap_err();
+        assert!(matches!(error, DataSourceError::MissingParameter { .. }));
+    }
+
+    #[test]
     fn declarative_sqlite_query_populates_named_context_table() {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -230,6 +344,7 @@ mod tests {
         drop(connection);
         let report = Report {
             name: "Database report".to_string(),
+            parameters: Vec::new(),
             data_sources: vec![DataSourceDefinition {
                 name: "main".to_string(),
                 connection: DataConnection::Sqlite {

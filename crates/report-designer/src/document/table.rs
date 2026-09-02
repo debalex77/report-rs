@@ -176,7 +176,7 @@ fn table_layout(
             };
             if !header {
                 text.value_format = ValueFormat {
-                    decimal_places: column.decimal_places.trim().parse().ok(),
+                    decimal_places: parse_decimal_places(&column.decimal_places).flatten(),
                     date_pattern: (!column.date_pattern.trim().is_empty())
                         .then(|| column.date_pattern.trim().to_string()),
                     prefix: column.prefix.clone(),

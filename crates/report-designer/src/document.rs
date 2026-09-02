@@ -33,6 +33,7 @@ pub(super) fn truncate(value: &str, max_chars: usize) -> String {
 pub(super) fn blank_report() -> Report {
     Report {
         name: "Untitled report".to_string(),
+        parameters: Vec::new(),
         data_sources: Vec::new(),
         pages: vec![Page {
             size: PageSize::A4,

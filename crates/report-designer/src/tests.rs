@@ -309,6 +309,14 @@ fn font_points_use_two_decimal_places() {
 }
 
 #[test]
+fn decimal_places_accepts_a_zero_mask() {
+    assert_eq!(parse_decimal_places("00"), Some(Some(2)));
+    assert_eq!(parse_decimal_places("2"), Some(Some(2)));
+    assert_eq!(parse_decimal_places(""), Some(None));
+    assert_eq!(parse_decimal_places("2.0"), None);
+}
+
+#[test]
 fn save_path_is_normalized_to_json_extension() {
     assert_eq!(
         ensure_json_extension(PathBuf::from("report")),

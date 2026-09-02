@@ -4,6 +4,7 @@ use super::*;
 fn serialize_report() {
     let report = Report {
         name: "Test report".to_string(),
+        parameters: Vec::new(),
         data_sources: Vec::new(),
 
         pages: vec![Page {
@@ -105,6 +106,47 @@ fn deserialize_report() {
 
     assert_eq!(report.name, "Structura operațională HoReCa");
     assert_eq!(report.pages.len(), 1);
+    assert!(report.parameters.is_empty());
+}
+
+#[test]
+fn report_parameters_json_round_trip() {
+    let json = r#"
+    {
+        "name": "Parameterized report",
+        "parameters": [
+            {
+                "name": "date_from",
+                "type": "Date",
+                "default_value": "2026-01-01",
+                "required": true
+            },
+            {
+                "name": "search",
+                "type": "Text"
+            }
+        ],
+        "pages": []
+    }
+    "#;
+
+    let report: Report = serde_json::from_str(json).unwrap();
+
+    assert_eq!(report.parameters.len(), 2);
+    assert_eq!(report.parameters[0].name, "date_from");
+    assert_eq!(report.parameters[0].value_type, ReportParameterType::Date);
+    assert_eq!(
+        report.parameters[0].default_value.as_deref(),
+        Some("2026-01-01")
+    );
+    assert!(report.parameters[0].required);
+    assert_eq!(report.parameters[1].value_type, ReportParameterType::Text);
+    assert_eq!(report.parameters[1].default_value, None);
+    assert!(!report.parameters[1].required);
+
+    let serialized = serde_json::to_string(&report).unwrap();
+    let round_trip: Report = serde_json::from_str(&serialized).unwrap();
+    assert_eq!(round_trip.parameters, report.parameters);
 }
 
 #[test]
@@ -183,6 +225,7 @@ fn query_bound_text_item_json_round_trip() {
 fn save_report_to_file() {
     let report = Report {
         name: "Saved report".to_string(),
+        parameters: Vec::new(),
         data_sources: Vec::new(),
 
         pages: vec![Page {
@@ -339,6 +382,7 @@ fn report_without_data_sources_remains_compatible() {
 fn sqlite_data_source_json_round_trip() {
     let report = Report {
         name: "SQLite report".to_string(),
+        parameters: Vec::new(),
         data_sources: vec![DataSourceDefinition {
             name: "main".to_string(),
             connection: DataConnection::Sqlite {

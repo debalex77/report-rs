@@ -470,8 +470,7 @@ impl DesignerApp {
             }
             Message::ValueFormatDecimalChanged(value) => {
                 self.text_inputs.decimal_places.clone_from(&value);
-                if value.is_empty() || value.parse::<u8>().is_ok() {
-                    let decimals = value.parse::<u8>().ok();
+                if let Some(decimals) = parse_decimal_places(&value) {
                     self.record_undo();
                     if self.update_selected_text(|text| text.value_format.decimal_places = decimals)
                     {
@@ -827,6 +826,46 @@ impl DesignerApp {
             Message::CloseContextMenu => self.context_menu_position = None,
             Message::ToggleProperties => self.properties_visible = !self.properties_visible,
             Message::ShowSidebarTab(tab) => self.sidebar_tab = tab,
+            Message::ShowDataQueryTab(tab) => {
+                if let Some(editor) = &mut self.data_query_editor {
+                    editor.tab = tab;
+                }
+            }
+            Message::ReportParameterTypeChanged(index, value) => {
+                let value_type = match value.as_str() {
+                    "Integer" => ReportParameterType::Integer,
+                    "Double" => ReportParameterType::Double,
+                    "Boolean" => ReportParameterType::Boolean,
+                    "Date" => ReportParameterType::Date,
+                    "DateTime" => ReportParameterType::DateTime,
+                    _ => ReportParameterType::Text,
+                };
+                if let Some(parameter) = self
+                    .data_query_editor
+                    .as_mut()
+                    .and_then(|editor| editor.parameters.get_mut(index))
+                {
+                    parameter.value_type = value_type;
+                }
+            }
+            Message::ReportParameterDefaultChanged(index, value) => {
+                if let Some(parameter) = self
+                    .data_query_editor
+                    .as_mut()
+                    .and_then(|editor| editor.parameters.get_mut(index))
+                {
+                    parameter.default_value = (!value.is_empty()).then_some(value);
+                }
+            }
+            Message::ReportParameterRequiredChanged(index, required) => {
+                if let Some(parameter) = self
+                    .data_query_editor
+                    .as_mut()
+                    .and_then(|editor| editor.parameters.get_mut(index))
+                {
+                    parameter.required = required;
+                }
+            }
             Message::NewDataSource => {
                 self.data_source_editor = Some(DataSourceEditor::new());
             }
@@ -905,7 +944,8 @@ impl DesignerApp {
             Message::CancelDataSourceEdit => self.data_source_editor = None,
             Message::NewDataQuery(source) => {
                 if source < self.report.data_sources.len() {
-                    self.data_query_editor = Some(DataQueryEditor::new(source));
+                    self.data_query_editor =
+                        Some(DataQueryEditor::new(source, &self.report.parameters));
                 }
             }
             Message::EditDataQuery { source, query } => {
@@ -915,8 +955,12 @@ impl DesignerApp {
                     .get(source)
                     .and_then(|data_source| data_source.queries.get(query))
                 {
-                    self.data_query_editor =
-                        Some(DataQueryEditor::from_query(source, query, data_query));
+                    self.data_query_editor = Some(DataQueryEditor::from_query(
+                        source,
+                        query,
+                        data_query,
+                        &self.report.parameters,
+                    ));
                 }
             }
             Message::DataQueryNameChanged(name) => {
@@ -927,6 +971,7 @@ impl DesignerApp {
             Message::DataQuerySqlEdited(action) => {
                 if let Some(editor) = &mut self.data_query_editor {
                     editor.sql.perform(action);
+                    editor.sync_parameters();
                 }
             }
             Message::OpenQueryTextMenu(target) => {
@@ -1012,6 +1057,18 @@ impl DesignerApp {
                 let Some(editor) = self.data_query_editor.take() else {
                     return Task::none();
                 };
+                let source_index = editor.source_index;
+                let query_index = editor.query_index;
+                let old_name = query_index.and_then(|index| {
+                    self.report
+                        .data_sources
+                        .get(source_index)
+                        .and_then(|source| source.queries.get(index))
+                        .map(|query| query.name.clone())
+                });
+                let was_expanded = old_name
+                    .as_ref()
+                    .is_some_and(|name| self.expanded_data_queries.contains(name));
                 let previous_report = self.report.clone();
                 match save_data_query(&mut self.report, &editor) {
                     Ok(()) => {
@@ -1019,7 +1076,37 @@ impl DesignerApp {
                         if let Some(snapshot) = self.undo_stack.last_mut() {
                             *snapshot = previous_report;
                         }
-                        self.error_message = None;
+                        if let Some(old_name) = old_name {
+                            self.expanded_data_queries.remove(&old_name);
+                            self.query_fields.remove(&old_name);
+                            self.query_field_types
+                                .retain(|(query, _), _| query != &old_name);
+                            self.selected_data_fields
+                                .retain(|(query, _)| query != &old_name);
+                        }
+                        let mut refresh_error = None;
+                        if was_expanded {
+                            let saved_index = query_index.unwrap_or_else(|| {
+                                self.report.data_sources[source_index].queries.len() - 1
+                            });
+                            match self.load_query_field_names(source_index, saved_index) {
+                                Ok((query_name, fields, types)) => {
+                                    self.query_field_types.extend(types.into_iter().map(
+                                        |(field, value_type)| {
+                                            ((query_name.clone(), field), value_type)
+                                        },
+                                    ));
+                                    self.query_fields.insert(query_name.clone(), fields);
+                                    self.expanded_data_queries.insert(query_name);
+                                }
+                                Err(error) => {
+                                    refresh_error = Some(format!(
+                                        "Query saved, but its fields could not be refreshed: {error}"
+                                    ));
+                                }
+                            }
+                        }
+                        self.error_message = refresh_error;
                         self.mark_dirty();
                     }
                     Err(error) => {
@@ -1270,7 +1357,10 @@ impl DesignerApp {
                     self.data_templates_position = None;
                 } else {
                     self.open_data_templates = Some(query);
-                    self.data_templates_position = Some(self.cursor_position);
+                    self.data_templates_position = Some(Point::new(
+                        (self.cursor_position.x - 39.0).max(0.0),
+                        self.cursor_position.y + 16.0,
+                    ));
                 }
             }
             Message::CloseDataTemplates => {
@@ -1494,7 +1584,7 @@ impl DesignerApp {
                 }
             }
             Message::DroppedColumnDecimalsChanged(index, value) => {
-                if (value.is_empty() || value.parse::<u8>().is_ok())
+                if parse_decimal_places(&value).is_some()
                     && let Some(column) = self
                         .pending_data_field_drop
                         .as_mut()

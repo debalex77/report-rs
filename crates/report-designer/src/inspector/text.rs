@@ -143,7 +143,10 @@ pub(super) fn append<'a>(
         .collapsed_groups
         .is_collapsed(PropertyGroup::ValueFormat)
     {
-        if matches!(text_item.value_type, ValueType::Integer | ValueType::Double) {
+        if matches!(
+            text_item.value_type,
+            ValueType::Integer | ValueType::Double | ValueType::Expression
+        ) {
             content = content
                 .push(text("Decimal places").size(11))
                 .push(
@@ -162,7 +165,10 @@ pub(super) fn append<'a>(
                         .on_toggle(Message::ValueFormatGroupingChanged),
                 );
         }
-        if matches!(text_item.value_type, ValueType::Date | ValueType::DateTime) {
+        if matches!(
+            text_item.value_type,
+            ValueType::Date | ValueType::DateTime | ValueType::Expression
+        ) {
             content = content.push(text("Date pattern").size(11)).push(
                 text_input("dd.MM.yyyy", &app.text_inputs.date_pattern)
                     .size(11)

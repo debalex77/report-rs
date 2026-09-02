@@ -20,6 +20,9 @@ pub fn default_text_color() -> Color {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Report {
     pub name: String,
+    /// Input values requested before the report is rendered.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub parameters: Vec<ReportParameter>,
     /// Declarative database sources available to report data bands.
     ///
     /// The field is optional in JSON so existing report definitions remain
@@ -27,6 +30,30 @@ pub struct Report {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub data_sources: Vec<DataSourceDefinition>,
     pub pages: Vec<Page>,
+}
+
+/// Declarative input parameter available to expressions and data queries.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReportParameter {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub value_type: ReportParameterType,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_value: Option<String>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub required: bool,
+}
+
+/// Supported report parameter value types.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ReportParameterType {
+    #[default]
+    Text,
+    Integer,
+    Double,
+    Boolean,
+    Date,
+    DateTime,
 }
 
 /// A named connection and the queries whose results become report tables.

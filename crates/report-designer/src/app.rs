@@ -22,7 +22,8 @@ use report_core::model::{
     Band, BandKind, Border, Color as ReportColor, DataConnection, DataQuery, DataSourceDefinition,
     FilterOperator, HorizontalAlign, ImageFit, ImageItem, Item, LayoutItem, Margins, Mm,
     Orientation, Padding, Page, PageSize, QueryFilter, QuerySort, QuerySource, RectangleItem,
-    Report, SortDirection, TextItem, ValueFormat, ValueType, VerticalAlign,
+    Report, ReportParameter, ReportParameterType, SortDirection, TextItem, ValueFormat, ValueType,
+    VerticalAlign,
 };
 
 #[cfg(test)]
@@ -71,7 +72,7 @@ mod update;
 #[path = "app/view.rs"]
 mod view;
 use data_sources::{
-    DataQueryEditor, DataSourceEditor, QueryTextTarget, load_query_rules_preview,
+    DataQueryEditor, DataQueryTab, DataSourceEditor, QueryTextTarget, load_query_rules_preview,
     parse_filter_operator, save_data_query, save_data_source,
 };
 use document::*;
@@ -114,6 +115,19 @@ const TEXT_COLOR_PALETTE: [ReportColor; 10] = [
     ReportColor::rgb(45, 105, 200),
     ReportColor::rgb(135, 75, 175),
 ];
+
+/// Parses either a decimal count (`2`) or a zero mask (`00`).
+/// An empty value means that the default numeric representation is used.
+fn parse_decimal_places(value: &str) -> Option<Option<u8>> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Some(None);
+    }
+    if value.bytes().all(|byte| byte == b'0') {
+        return u8::try_from(value.len()).ok().map(Some);
+    }
+    value.parse::<u8>().ok().map(Some)
+}
 
 #[derive(Default)]
 struct GeometryInputs {

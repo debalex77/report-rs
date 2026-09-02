@@ -98,7 +98,25 @@ fn format_value(
         ValueType::Date | ValueType::DateTime => {
             format_date(raw, value_type, format).unwrap_or_else(|| raw.to_string())
         }
-        ValueType::Text | ValueType::Expression => raw.to_string(),
+        ValueType::Expression => {
+            if format.date_pattern.is_some() {
+                format_date(raw, ValueType::DateTime, format)
+                    .or_else(|| format_date(raw, ValueType::Date, format))
+                    .unwrap_or_else(|| raw.to_string())
+            } else if format.decimal_places.is_some() || format.grouping {
+                let number = match value {
+                    Some(Value::Number(number)) => Some(*number),
+                    Some(Value::String(number)) => number.parse().ok(),
+                    _ => raw.parse().ok(),
+                };
+                number
+                    .map(|number| format_number(number, ValueType::Double, format))
+                    .unwrap_or_else(|| raw.to_string())
+            } else {
+                raw.to_string()
+            }
+        }
+        ValueType::Text => raw.to_string(),
     };
     format!("{}{}{}", format.prefix, formatted, format.suffix)
 }
@@ -298,6 +316,29 @@ mod tests {
                 &context,
                 None,
                 ValueType::Date,
+                &format,
+            ),
+            "01.09.2026"
+        );
+    }
+
+    #[test]
+    fn formats_expression_date_with_report_pattern() {
+        let mut row = Row::new();
+        row.insert("birthday".into(), Value::String("2026-09-01".into()));
+        let context = ReportContext::new();
+        let format = ValueFormat {
+            date_pattern: Some("dd.MM.yyyy".into()),
+            ..ValueFormat::default()
+        };
+
+        assert_eq!(
+            evaluate_formatted_for_query(
+                "${birthday}",
+                Some(&row),
+                &context,
+                None,
+                ValueType::Expression,
                 &format,
             ),
             "01.09.2026"

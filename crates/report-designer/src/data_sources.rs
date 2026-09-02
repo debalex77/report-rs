@@ -14,6 +14,14 @@ pub(crate) struct DataQueryEditor {
     pub(crate) query_index: Option<usize>,
     pub(crate) name: String,
     pub(crate) sql: text_editor::Content,
+    pub(crate) tab: DataQueryTab,
+    pub(crate) parameters: Vec<ReportParameter>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DataQueryTab {
+    Sql,
+    Parameters,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -23,23 +31,99 @@ pub(crate) enum QueryTextTarget {
 }
 
 impl DataQueryEditor {
-    pub(crate) fn new(source_index: usize) -> Self {
-        Self {
+    pub(crate) fn new(source_index: usize, report_parameters: &[ReportParameter]) -> Self {
+        let mut editor = Self {
             source_index,
             query_index: None,
             name: String::new(),
             sql: text_editor::Content::new(),
-        }
+            tab: DataQueryTab::Sql,
+            parameters: report_parameters.to_vec(),
+        };
+        editor.sync_parameters();
+        editor
     }
 
-    pub(crate) fn from_query(source_index: usize, query_index: usize, query: &DataQuery) -> Self {
-        Self {
+    pub(crate) fn from_query(
+        source_index: usize,
+        query_index: usize,
+        query: &DataQuery,
+        report_parameters: &[ReportParameter],
+    ) -> Self {
+        let mut editor = Self {
             source_index,
             query_index: Some(query_index),
             name: query.name.clone(),
             sql: text_editor::Content::with_text(&query.sql),
-        }
+            tab: DataQueryTab::Sql,
+            parameters: report_parameters.to_vec(),
+        };
+        editor.sync_parameters();
+        editor
     }
+
+    pub(crate) fn sync_parameters(&mut self) {
+        let names = sql_parameter_names(&self.sql.text());
+        let previous = std::mem::take(&mut self.parameters);
+        self.parameters = names
+            .into_iter()
+            .map(|name| {
+                previous
+                    .iter()
+                    .find(|parameter| parameter.name == name)
+                    .cloned()
+                    .unwrap_or(ReportParameter {
+                        name,
+                        value_type: ReportParameterType::Text,
+                        default_value: None,
+                        required: false,
+                    })
+            })
+            .collect();
+    }
+}
+
+fn sql_parameter_names(sql: &str) -> Vec<String> {
+    let chars = sql.chars().collect::<Vec<_>>();
+    let mut names = Vec::new();
+    let mut index = 0;
+    let mut quote = None;
+    while index < chars.len() {
+        let ch = chars[index];
+        if let Some(active) = quote {
+            if ch == active {
+                quote = None;
+            }
+            index += 1;
+            continue;
+        }
+        if matches!(ch, '\'' | '"') {
+            quote = Some(ch);
+            index += 1;
+            continue;
+        }
+        if ch == ':'
+            && chars
+                .get(index + 1)
+                .is_some_and(|ch| ch.is_ascii_alphabetic() || *ch == '_')
+        {
+            let start = index + 1;
+            index = start + 1;
+            while chars
+                .get(index)
+                .is_some_and(|ch| ch.is_ascii_alphanumeric() || *ch == '_')
+            {
+                index += 1;
+            }
+            let name = chars[start..index].iter().collect::<String>();
+            if !names.contains(&name) {
+                names.push(name);
+            }
+            continue;
+        }
+        index += 1;
+    }
+    names
 }
 
 impl DataSourceEditor {
@@ -133,6 +217,17 @@ pub(crate) fn save_data_query(report: &mut Report, editor: &DataQueryEditor) -> 
         })
     {
         return Err("Another query already uses this name".to_string());
+    }
+    for parameter in &editor.parameters {
+        if let Some(existing) = report
+            .parameters
+            .iter_mut()
+            .find(|existing| existing.name == parameter.name)
+        {
+            *existing = parameter.clone();
+        } else {
+            report.parameters.push(parameter.clone());
+        }
     }
     let source = report
         .data_sources
@@ -406,6 +501,112 @@ impl DesignerApp {
             .get(editor.source_index)
             .map(|source| source.name.as_str())
             .unwrap_or("Missing source");
+        let tabs = row![
+            button(container(text("SQL").size(12)).center(Fill))
+                .width(Fill)
+                .height(28)
+                .padding(0)
+                .style(if editor.tab == DataQueryTab::Sql {
+                    button::primary
+                } else {
+                    button::secondary
+                })
+                .on_press(Message::ShowDataQueryTab(DataQueryTab::Sql)),
+            button(container(text("Parameters").size(12)).center(Fill))
+                .width(Fill)
+                .height(28)
+                .padding(0)
+                .style(if editor.tab == DataQueryTab::Parameters {
+                    button::primary
+                } else {
+                    button::secondary
+                })
+                .on_press(Message::ShowDataQueryTab(DataQueryTab::Parameters)),
+        ]
+        .spacing(4);
+        let editor_body: Element<'_, Message> = if editor.tab == DataQueryTab::Sql {
+            mouse_area(
+                text_editor(&editor.sql)
+                    .height(330)
+                    .padding(7)
+                    .on_action(Message::DataQuerySqlEdited),
+            )
+            .on_right_press(Message::OpenQueryTextMenu(QueryTextTarget::Sql))
+            .into()
+        } else {
+            let types = ["Text", "Integer", "Double", "Boolean", "Date", "DateTime"]
+                .into_iter()
+                .map(str::to_string)
+                .collect::<Vec<_>>();
+            let mut parameters = iced::widget::column![
+                text("Parameters detected automatically from :name occurrences in SQL.").size(10)
+            ]
+            .spacing(7);
+            if editor.parameters.is_empty() {
+                parameters = parameters.push(text("No SQL parameters detected.").size(11));
+            }
+            for (index, parameter) in editor.parameters.iter().enumerate() {
+                parameters = parameters.push(
+                    container(
+                        iced::widget::column![
+                            row![
+                                text("Name").size(11).width(62),
+                                text(format!(":{}", parameter.name)).size(12),
+                            ]
+                            .spacing(5),
+                            row![
+                                text("Type").size(11).width(62),
+                                pick_list(
+                                    types.clone(),
+                                    Some(parameter_type_name(parameter.value_type).to_string()),
+                                    move |value| Message::ReportParameterTypeChanged(index, value),
+                                )
+                                .width(Fill)
+                                .text_size(11)
+                                .padding(4),
+                            ]
+                            .spacing(5)
+                            .align_y(iced::Alignment::Center),
+                            row![
+                                text("Default").size(11).width(62),
+                                text_input(
+                                    "Optional value",
+                                    parameter.default_value.as_deref().unwrap_or(""),
+                                )
+                                .width(Fill)
+                                .size(11)
+                                .padding(5)
+                                .on_input(move |value| {
+                                    Message::ReportParameterDefaultChanged(index, value)
+                                }),
+                            ]
+                            .spacing(5)
+                            .align_y(iced::Alignment::Center),
+                            toggler(parameter.required)
+                                .label("Required")
+                                .text_size(11)
+                                .size(16)
+                                .spacing(7)
+                                .on_toggle(move |value| Message::ReportParameterRequiredChanged(
+                                    index, value
+                                )),
+                        ]
+                        .spacing(6),
+                    )
+                    .padding(7)
+                    .width(Fill)
+                    .style(|theme: &Theme| container::Style {
+                        border: iced::Border {
+                            color: theme.extended_palette().background.strong.color,
+                            width: 1.0,
+                            radius: iced::border::radius(7),
+                        },
+                        ..Default::default()
+                    }),
+                );
+            }
+            scrollable(parameters).height(330).into()
+        };
         let content = iced::widget::column![
             text(if editor.query_index.is_some() {
                 "Edit SQLite query"
@@ -423,14 +624,8 @@ impl DesignerApp {
                     .on_input(Message::DataQueryNameChanged)
             )
             .on_right_press(Message::OpenQueryTextMenu(QueryTextTarget::Name)),
-            text("SQL").size(12),
-            mouse_area(
-                text_editor(&editor.sql)
-                    .height(330)
-                    .padding(7)
-                    .on_action(Message::DataQuerySqlEdited)
-            )
-            .on_right_press(Message::OpenQueryTextMenu(QueryTextTarget::Sql)),
+            tabs,
+            editor_body,
         ]
         .spacing(7);
         let content = content.push(
@@ -951,6 +1146,17 @@ impl DesignerApp {
     }
 }
 
+fn parameter_type_name(value_type: ReportParameterType) -> &'static str {
+    match value_type {
+        ReportParameterType::Text => "Text",
+        ReportParameterType::Integer => "Integer",
+        ReportParameterType::Double => "Double",
+        ReportParameterType::Boolean => "Boolean",
+        ReportParameterType::Date => "Date",
+        ReportParameterType::DateTime => "DateTime",
+    }
+}
+
 pub(super) fn query_text_context_popup(position: Point) -> Element<'static, Message> {
     let action = |label, message| {
         button(text(label).size(12))
@@ -1085,6 +1291,8 @@ mod tests {
             query_index: None,
             name: "orders".to_string(),
             sql: text_editor::Content::with_text("SELECT id, total FROM orders"),
+            tab: DataQueryTab::Sql,
+            parameters: Vec::new(),
         };
 
         save_data_query(&mut report, &editor).unwrap();
@@ -1119,6 +1327,8 @@ mod tests {
                 query_index: None,
                 name: "orders".to_string(),
                 sql: text_editor::Content::with_text("SELECT 1"),
+                tab: DataQueryTab::Sql,
+                parameters: Vec::new(),
             },
         )
         .unwrap();
@@ -1130,10 +1340,31 @@ mod tests {
                 query_index: None,
                 name: "orders".to_string(),
                 sql: text_editor::Content::with_text("SELECT 2"),
+                tab: DataQueryTab::Sql,
+                parameters: Vec::new(),
             },
         )
         .unwrap_err();
 
         assert_eq!(error, "Another query already uses this name");
+    }
+
+    #[test]
+    fn detects_unique_named_parameters_outside_sql_literals() {
+        let mut editor = DataQueryEditor::new(0, &[]);
+        editor.sql = text_editor::Content::with_text(
+            "SELECT * FROM visits WHERE date >= :date_from AND doctor = :doctor AND note = ':ignored' AND date <= :date_from",
+        );
+
+        editor.sync_parameters();
+
+        assert_eq!(
+            editor
+                .parameters
+                .iter()
+                .map(|parameter| parameter.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["date_from", "doctor"]
+        );
     }
 }

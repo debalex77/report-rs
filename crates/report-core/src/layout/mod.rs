@@ -153,67 +153,8 @@ impl LayoutEngine {
         let mut height = band.height;
 
         for item in &band.items {
-            let required_height = match item {
-                Item::Text(text) => {
-                    let effective_height = if text.auto_height {
-                        // Resolved values affect wrapping and must be known
-                        // before the pagination decision is made.
-                        let resolved_text = expressions::evaluate_formatted_for_query(
-                            &text.text,
-                            row,
-                            context,
-                            current_query,
-                            text.value_type,
-                            &text.value_format,
-                        );
-
-                        let font = text.font_spec();
-
-                        // Padding reduces the inner width available to text.
-                        let content_width =
-                            (text.width.0 - text.padding.left.0 - text.padding.right.0).max(0.0);
-
-                        let text_layout = if text.word_wrap {
-                            TextLayout::wrap(&resolved_text, &font, content_width, measurer)
-                        } else {
-                            TextLayout::single_line(&resolved_text, &font, measurer)
-                        };
-
-                        // Auto-height includes vertical padding but never
-                        // shrinks below the explicitly declared height.
-                        let layout_height =
-                            Mm(text.padding.top.0 + text_layout.height + text.padding.bottom.0);
-
-                        if layout_height > text.height {
-                            layout_height
-                        } else {
-                            text.height
-                        }
-                    } else {
-                        text.height
-                    };
-
-                    // Item positions are band-relative, so the required extent
-                    // includes both the offset and the item height.
-                    text.y + effective_height
-                }
-
-                Item::Line(line) => {
-                    if line.y1 > line.y2 {
-                        line.y1
-                    } else {
-                        line.y2
-                    }
-                }
-
-                Item::Rectangle(rect) => rect.y + rect.height,
-
-                Item::Image(image) => image.y + image.height,
-
-                Item::HorizontalLayout(layout) | Item::VerticalLayout(layout) => {
-                    layout.y + layout.height
-                }
-            };
+            let required_height =
+                Self::measure_item_bottom(item, row, context, current_query, measurer);
 
             if required_height > height {
                 height = required_height;
@@ -221,6 +162,63 @@ impl LayoutEngine {
         }
 
         height
+    }
+
+    fn measure_text_height<M: TextMeasurer>(
+        text: &crate::model::TextItem,
+        row: Option<&Row>,
+        context: &ReportContext,
+        current_query: Option<&str>,
+        measurer: &M,
+    ) -> Mm {
+        if !text.auto_height {
+            return text.height;
+        }
+
+        let resolved_text = expressions::evaluate_formatted_for_query(
+            &text.text,
+            row,
+            context,
+            current_query,
+            text.value_type,
+            &text.value_format,
+        );
+        let content_width = (text.width.0 - text.padding.left.0 - text.padding.right.0).max(0.0);
+        let font = text.font_spec();
+        let text_layout = if text.word_wrap {
+            TextLayout::wrap(&resolved_text, &font, content_width, measurer)
+        } else {
+            TextLayout::single_line(&resolved_text, &font, measurer)
+        };
+        let measured = Mm(text.padding.top.0 + text_layout.height + text.padding.bottom.0);
+        Self::max_mm(text.height, measured)
+    }
+
+    fn measure_item_bottom<M: TextMeasurer>(
+        item: &Item,
+        row: Option<&Row>,
+        context: &ReportContext,
+        current_query: Option<&str>,
+        measurer: &M,
+    ) -> Mm {
+        match item {
+            Item::Text(text) => {
+                text.y + Self::measure_text_height(text, row, context, current_query, measurer)
+            }
+            Item::Line(line) => Self::max_mm(line.y1, line.y2),
+            Item::Rectangle(rect) => rect.y + rect.height,
+            Item::Image(image) => image.y + image.height,
+            Item::HorizontalLayout(layout) | Item::VerticalLayout(layout) => {
+                let content_height = layout
+                    .items
+                    .iter()
+                    .map(|child| {
+                        Self::measure_item_bottom(child, row, context, current_query, measurer)
+                    })
+                    .fold(layout.height, Self::max_mm);
+                layout.y + content_height
+            }
+        }
     }
 
     fn render_band<M: TextMeasurer>(
@@ -237,128 +235,174 @@ impl LayoutEngine {
             _ => None,
         };
         for item in &band.items {
-            match item {
-                Item::Text(text) => {
-                    // Keep these choices identical to measure_band: pagination
-                    // is correct only when measuring and rendering agree.
-                    let resolved_text = expressions::evaluate_formatted_for_query(
-                        &text.text,
-                        row,
-                        context,
-                        current_query,
-                        text.value_type,
-                        &text.value_format,
-                    );
+            Self::render_item(
+                item,
+                offset_x,
+                offset_y,
+                row,
+                context,
+                current_query,
+                measurer,
+                rendered_items,
+                None,
+            );
+        }
+    }
 
-                    let font = text.font_spec();
+    #[allow(clippy::too_many_arguments)]
+    fn render_item<M: TextMeasurer>(
+        item: &Item,
+        offset_x: Mm,
+        offset_y: Mm,
+        row: Option<&Row>,
+        context: &ReportContext,
+        current_query: Option<&str>,
+        measurer: &M,
+        rendered_items: &mut Vec<RenderedItem>,
+        minimum_height: Option<Mm>,
+    ) {
+        match item {
+            Item::Text(text) => {
+                // Keep these choices identical to measure_band: pagination
+                // is correct only when measuring and rendering agree.
+                let resolved_text = expressions::evaluate_formatted_for_query(
+                    &text.text,
+                    row,
+                    context,
+                    current_query,
+                    text.value_type,
+                    &text.value_format,
+                );
 
-                    let content_width =
-                        (text.width.0 - text.padding.left.0 - text.padding.right.0).max(0.0);
+                let font = text.font_spec();
 
-                    let text_layout = if text.word_wrap {
-                        TextLayout::wrap(&resolved_text, &font, content_width, measurer)
-                    } else {
-                        TextLayout::single_line(&resolved_text, &font, measurer)
-                    };
+                let content_width =
+                    (text.width.0 - text.padding.left.0 - text.padding.right.0).max(0.0);
 
-                    let rendered_height = if text.auto_height {
-                        let layout_height =
-                            Mm(text.padding.top.0 + text_layout.height + text.padding.bottom.0);
+                let text_layout = if text.word_wrap {
+                    TextLayout::wrap(&resolved_text, &font, content_width, measurer)
+                } else {
+                    TextLayout::single_line(&resolved_text, &font, measurer)
+                };
 
-                        if layout_height > text.height {
-                            layout_height
-                        } else {
-                            text.height
-                        }
-                    } else {
-                        text.height
-                    };
+                let rendered_height =
+                    Self::measure_text_height(text, row, context, current_query, measurer);
+                let rendered_height =
+                    Self::max_mm(rendered_height, minimum_height.unwrap_or(Mm(0.0)));
 
-                    rendered_items.push(RenderedItem::Text {
-                        // Convert band-relative coordinates to page coordinates.
-                        x: offset_x + text.x,
-                        y: offset_y + text.y,
+                rendered_items.push(RenderedItem::Text {
+                    // Convert band-relative coordinates to page coordinates.
+                    x: offset_x + text.x,
+                    y: offset_y + text.y,
 
-                        width: text.width,
-                        height: rendered_height,
+                    width: text.width,
+                    height: rendered_height,
 
-                        text: resolved_text,
+                    text: resolved_text,
 
-                        font_family: text.font_family.clone(),
-                        font_size: text.font_size,
-                        bold: text.bold,
-                        italic: text.italic,
-                        underline: text.underline,
-                        strikeout: text.strikeout,
+                    font_family: text.font_family.clone(),
+                    font_size: text.font_size,
+                    bold: text.bold,
+                    italic: text.italic,
+                    underline: text.underline,
+                    strikeout: text.strikeout,
 
-                        text_color: text.text_color,
+                    text_color: text.text_color,
 
-                        lines: text_layout.lines,
-                        line_height: text_layout.line_height,
+                    lines: text_layout.lines,
+                    line_height: text_layout.line_height,
 
-                        horizontal_align: text.horizontal_align.clone(),
-                        vertical_align: text.vertical_align.clone(),
+                    horizontal_align: text.horizontal_align.clone(),
+                    vertical_align: text.vertical_align.clone(),
 
-                        padding: text.padding,
+                    padding: text.padding,
 
-                        background: text.background,
-                        border: text.border.clone(),
+                    background: text.background,
+                    border: text.border.clone(),
+                });
+            }
+
+            Item::Line(line) => {
+                rendered_items.push(RenderedItem::Line {
+                    x1: offset_x + line.x1,
+                    y1: offset_y + line.y1,
+                    x2: offset_x + line.x2,
+                    y2: offset_y + line.y2,
+                    width: line.width,
+                });
+            }
+
+            Item::Rectangle(rect) => {
+                rendered_items.push(RenderedItem::Rectangle {
+                    x: offset_x + rect.x,
+                    y: offset_y + rect.y,
+
+                    width: rect.width,
+                    height: rect.height,
+
+                    border_width: rect.border_width,
+                });
+            }
+
+            Item::Image(image) => {
+                rendered_items.push(RenderedItem::Image {
+                    x: offset_x + image.x,
+                    y: offset_y + image.y,
+
+                    width: image.width,
+                    height: image.height,
+
+                    source: image.source.clone(),
+                    fit: image.fit,
+                });
+            }
+
+            Item::HorizontalLayout(layout) | Item::VerticalLayout(layout) => {
+                let layout_height = layout
+                    .items
+                    .iter()
+                    .map(|child| {
+                        Self::measure_item_bottom(child, row, context, current_query, measurer)
+                    })
+                    .fold(layout.height, Self::max_mm);
+                let layout_height = Self::max_mm(layout_height, minimum_height.unwrap_or(Mm(0.0)));
+                let equalize_height = matches!(item, Item::HorizontalLayout(_));
+
+                for child in &layout.items {
+                    let child_minimum = equalize_height.then(|| {
+                        let child_y = match child {
+                            Item::Text(value) => value.y,
+                            Item::Rectangle(value) => value.y,
+                            Item::Image(value) => value.y,
+                            Item::HorizontalLayout(value) | Item::VerticalLayout(value) => value.y,
+                            Item::Line(value) => {
+                                if value.y1 < value.y2 {
+                                    value.y1
+                                } else {
+                                    value.y2
+                                }
+                            }
+                        };
+                        Mm((layout_height.0 - child_y.0).max(0.0))
                     });
-                }
-
-                Item::Line(line) => {
-                    rendered_items.push(RenderedItem::Line {
-                        x1: offset_x + line.x1,
-                        y1: offset_y + line.y1,
-                        x2: offset_x + line.x2,
-                        y2: offset_y + line.y2,
-                        width: line.width,
-                    });
-                }
-
-                Item::Rectangle(rect) => {
-                    rendered_items.push(RenderedItem::Rectangle {
-                        x: offset_x + rect.x,
-                        y: offset_y + rect.y,
-
-                        width: rect.width,
-                        height: rect.height,
-
-                        border_width: rect.border_width,
-                    });
-                }
-
-                Item::Image(image) => {
-                    rendered_items.push(RenderedItem::Image {
-                        x: offset_x + image.x,
-                        y: offset_y + image.y,
-
-                        width: image.width,
-                        height: image.height,
-
-                        source: image.source.clone(),
-                        fit: image.fit,
-                    });
-                }
-
-                Item::HorizontalLayout(layout) | Item::VerticalLayout(layout) => {
-                    let nested = Band {
-                        kind: crate::model::BandKind::ReportHeader,
-                        height: layout.height,
-                        items: layout.items.clone(),
-                    };
-                    Self::render_band(
-                        &nested,
+                    Self::render_item(
+                        child,
                         offset_x + layout.x,
                         offset_y + layout.y,
                         row,
                         context,
+                        current_query,
                         measurer,
                         rendered_items,
+                        child_minimum,
                     );
                 }
             }
         }
+    }
+
+    fn max_mm(left: Mm, right: Mm) -> Mm {
+        if left > right { left } else { right }
     }
 
     /// Lays out and paginates a page with caller-provided text metrics.
@@ -635,9 +679,9 @@ mod tests {
     use crate::datasource::{ReportContext, Row};
     use crate::font::FontSpec;
     use crate::model::{
-        Band, BandKind, Color, HorizontalAlign, ImageFit, ImageItem, Item, Margins, Orientation,
-        Page, PageSize, QuerySource, TextItem, ValueType, VerticalAlign, default_font_family,
-        default_text_color,
+        Band, BandKind, Color, HorizontalAlign, ImageFit, ImageItem, Item, LayoutItem, Margins,
+        Orientation, Page, PageSize, QuerySource, TextItem, ValueType, VerticalAlign,
+        default_font_family, default_text_color,
     };
 
     #[test]
@@ -1469,6 +1513,92 @@ mod tests {
         let actual_height = expected_height;
 
         assert!((actual_height - expected_height).abs() < 0.001);
+    }
+
+    #[test]
+    fn horizontal_layout_uses_tallest_auto_height_for_every_cell() {
+        let cell = |x: f32, width: f32, text: &str| {
+            Item::Text(TextItem {
+                name: String::new(),
+                x: Mm(x),
+                y: Mm(0.0),
+                width: Mm(width),
+                height: Mm(8.0),
+                text: text.to_string(),
+                value_type: ValueType::Text,
+                query_source: QuerySource::Main,
+                field: None,
+                value_format: crate::model::ValueFormat::default(),
+                font_size: 12.0,
+                font_family: default_font_family(),
+                bold: false,
+                italic: false,
+                underline: false,
+                strikeout: false,
+                text_color: default_text_color(),
+                horizontal_align: HorizontalAlign::Left,
+                vertical_align: VerticalAlign::Top,
+                word_wrap: true,
+                auto_height: true,
+                padding: Padding::default(),
+                background: None,
+                border: None,
+            })
+        };
+        let page = Page {
+            size: PageSize::A4,
+            orientation: Orientation::Portrait,
+            margins: Margins {
+                left: Mm(0.0),
+                top: Mm(0.0),
+                right: Mm(0.0),
+                bottom: Mm(0.0),
+            },
+            bands: vec![
+                Band {
+                    kind: BandKind::ReportHeader,
+                    height: Mm(8.0),
+                    items: vec![Item::HorizontalLayout(LayoutItem {
+                        name: "tableRow".to_string(),
+                        x: Mm(0.0),
+                        y: Mm(0.0),
+                        width: Mm(100.0),
+                        height: Mm(8.0),
+                        items: vec![
+                            cell(0.0, 20.0, "short"),
+                            cell(
+                                20.0,
+                                20.0,
+                                "a long value that wraps over several lines in this narrow cell",
+                            ),
+                        ],
+                    })],
+                },
+                Band {
+                    kind: BandKind::ReportFooter,
+                    height: Mm(8.0),
+                    items: vec![cell(0.0, 100.0, "after table")],
+                },
+            ],
+        };
+
+        let rendered = LayoutEngine::render_page(&page, &ReportContext::new());
+        let (_, first_height) = match &rendered.items[0] {
+            RenderedItem::Text { y, height, .. } => (*y, *height),
+            _ => panic!("expected first table cell"),
+        };
+        let (second_y, second_height) = match &rendered.items[1] {
+            RenderedItem::Text { y, height, .. } => (*y, *height),
+            _ => panic!("expected second table cell"),
+        };
+        let footer_y = match &rendered.items[2] {
+            RenderedItem::Text { y, .. } => *y,
+            _ => panic!("expected footer text"),
+        };
+
+        assert!(first_height > Mm(8.0));
+        assert_eq!(first_height, second_height);
+        assert_eq!(footer_y, second_y + second_height);
     }
 
     #[test]
