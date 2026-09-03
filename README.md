@@ -13,6 +13,8 @@
   <img src="https://img.shields.io/badge/release-v0.1.0--alpha.1-blue" alt="v0.1.0-alpha.1">
 </p>
 
+![img.png](img.png)
+
 > **Alpha software:** the report format and user interface may still change.
 
 ## What it does
