@@ -172,6 +172,18 @@ impl PdfRenderer {
         path: impl AsRef<Path>,
         base_dir: impl AsRef<Path>,
     ) -> Result<(), PdfError> {
+        Self::render_to_file_with_base_dir_and_progress(pages, path, base_dir, |_, _| {})
+    }
+
+    pub fn render_to_file_with_base_dir_and_progress<F>(
+        pages: &[RenderedPage],
+        path: impl AsRef<Path>,
+        base_dir: impl AsRef<Path>,
+        mut page_rendered: F,
+    ) -> Result<(), PdfError>
+    where
+        F: FnMut(usize, usize),
+    {
         let mut document = PdfDocument::new("report-rs");
         let base_dir = base_dir.as_ref();
 
@@ -191,7 +203,7 @@ impl PdfRenderer {
 
         let mut pdf_pages = Vec::new();
 
-        for page in pages {
+        for (page_index, page) in pages.iter().enumerate() {
             let mut ops = Vec::new();
 
             for item in &page.items {
@@ -565,6 +577,7 @@ impl PdfRenderer {
             }
 
             pdf_pages.push(PdfPage::new(Mm(page.width.0), Mm(page.height.0), ops));
+            page_rendered(page_index + 1, pages.len());
         }
 
         // ------------------------------------------------------------
@@ -588,5 +601,32 @@ mod tests {
     #[test]
     fn create_renderer() {
         let _renderer = PdfRenderer;
+    }
+
+    #[test]
+    fn reports_each_exported_page() {
+        let pages = (0..3)
+            .map(|_| RenderedPage {
+                width: report_core::model::Mm(210.0),
+                height: report_core::model::Mm(297.0),
+                items: Vec::new(),
+            })
+            .collect::<Vec<_>>();
+        let output = std::env::temp_dir().join(format!(
+            "report-rs-progress-test-{}.pdf",
+            std::process::id()
+        ));
+        let mut updates = Vec::new();
+
+        PdfRenderer::render_to_file_with_base_dir_and_progress(
+            &pages,
+            &output,
+            ".",
+            |completed, total| updates.push((completed, total)),
+        )
+        .expect("PDF should render");
+
+        assert_eq!(updates, vec![(1, 3), (2, 3), (3, 3)]);
+        std::fs::remove_file(output).expect("temporary PDF should be removable");
     }
 }

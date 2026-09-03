@@ -34,6 +34,7 @@ impl DesignerApp {
                 }
                 self.preview_loading = true;
                 self.preview_progress = 0.0;
+                self.preview_stage = "Starting Preview…".to_string();
                 self.status = "Opening Preview…".to_string();
                 let report = self.report.clone();
                 let path = self.path.clone();
@@ -54,14 +55,25 @@ impl DesignerApp {
                 }
             },
             Message::PreviewProgressTick => {
-                self.preview_progress = (self.preview_progress + 3.0) % 200.0;
                 if let Some(path) = self.preview_ready_path.clone()
                     && let Ok(contents) = std::fs::read_to_string(&path)
                 {
+                    let summary = contents.trim();
+                    if summary.is_empty() {
+                        return Task::none();
+                    }
+                    if let Some(progress) = summary.strip_prefix("PROGRESS:") {
+                        if let Some((percent, stage)) = progress.split_once(':') {
+                            if let Ok(percent) = percent.parse::<f32>() {
+                                self.preview_progress = percent.clamp(0.0, 100.0);
+                            }
+                            self.preview_stage = stage.to_string();
+                        }
+                        return Task::none();
+                    }
                     let _ = std::fs::remove_file(&path);
                     self.preview_ready_path = None;
                     self.preview_loading = false;
-                    let summary = contents.trim();
                     if let Some(error) = summary.strip_prefix("ERROR: ") {
                         self.set_error(format!("Cannot open Preview: {error}"));
                     } else {
@@ -85,6 +97,8 @@ impl DesignerApp {
                             format!("Preview opened: {summary} in {elapsed}")
                         };
                     }
+                } else {
+                    self.preview_progress = (self.preview_progress + 3.0) % 200.0;
                 }
             }
             Message::ZoomIn => self.zoom = (self.zoom + 0.1).min(2.0),

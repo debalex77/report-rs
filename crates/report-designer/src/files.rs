@@ -68,7 +68,10 @@ pub(crate) fn launch_preview(
     std::thread::spawn(move || {
         let mut child = child;
         let status = child.wait();
-        if !ready_for_watcher.exists() {
+        let completed = std::fs::read_to_string(&ready_for_watcher)
+            .ok()
+            .is_some_and(|contents| !contents.starts_with("PROGRESS:"));
+        if !completed {
             let message = match status {
                 Ok(status) => format!("ERROR: report-preview exited before opening ({status})"),
                 Err(error) => format!("ERROR: cannot monitor report-preview: {error}"),

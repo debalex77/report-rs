@@ -1,5 +1,9 @@
 use std::collections::HashMap;
 use std::path::{Path as FsPath, PathBuf};
+use std::sync::{
+    Arc,
+    atomic::{AtomicU8, AtomicUsize, Ordering},
+};
 
 use iced::mouse;
 use iced::widget::canvas::{self, Canvas, Frame, Geometry, Path};
@@ -19,7 +23,7 @@ use report_core::datasource::{
     ReportContext, Row, Value, load_report_data_sources, parse_report_parameter_value,
 };
 use report_core::layout::{LayoutEngine, RenderedItem, RenderedPage};
-use report_core::model::{HorizontalAlign, Report, ReportParameterType, VerticalAlign};
+use report_core::model::{BandKind, HorizontalAlign, Report, ReportParameterType, VerticalAlign};
 
 use report_core::font::measurer::RealFontMeasurer;
 use report_core::image::layout::calculate_image_placement;
@@ -91,8 +95,13 @@ struct PreviewApp {
     parameter_values: Vec<String>,
     parameters_pending: bool,
     processing: bool,
-    processing_duration: Option<std::time::Duration>,
+    processing_timing: Option<RenderTiming>,
+    exporting_pdf: bool,
+    export_duration: Option<std::time::Duration>,
     progress: f32,
+    render_progress: Arc<AtomicU8>,
+    exported_pages: Arc<AtomicUsize>,
+    ready_path: Option<PathBuf>,
 }
 
 fn load_preview_images(
@@ -145,9 +154,8 @@ fn load_preview_images(
     images
 }
 
-impl Default for PreviewApp {
-    fn default() -> Self {
-        let started = std::time::Instant::now();
+impl PreviewApp {
+    fn boot() -> (Self, Task<Message>) {
         let path = std::env::args().nth(1).unwrap_or_else(|| {
             concat!(
                 env!("CARGO_MANIFEST_DIR"),
@@ -166,36 +174,50 @@ impl Default for PreviewApp {
             .map(|parameter| parameter.default_value.clone().unwrap_or_default())
             .collect();
         let parameters_pending = report.parameters.iter().any(|parameter| parameter.required);
-        let (pages, images, error_message) = if parameters_pending {
-            (Vec::new(), HashMap::new(), None)
-        } else {
-            render_report(&report, report_dir, ReportContext::new())
-        };
-
-        let page_count = pages.len();
-        let processing_duration = (!parameters_pending).then(|| started.elapsed());
-        if let Some(ready_path) = ready_file_argument() {
-            let summary = if parameters_pending {
-                "waiting for parameters".to_string()
-            } else {
-                format!("{page_count} pages")
-            };
-            let _ = std::fs::write(ready_path, summary);
+        let ready_path = ready_file_argument();
+        if parameters_pending && let Some(path) = ready_path.as_ref() {
+            let _ = std::fs::write(path, "waiting for parameters");
         }
-        Self {
+        let app = Self {
             report,
-            pages,
+            pages: Vec::new(),
             current_page: 0,
             zoom: 1.0,
             debug_overlay: false,
-            images,
+            images: HashMap::new(),
             report_dir: report_dir.to_path_buf(),
-            error_message,
+            error_message: None,
             parameter_values,
             parameters_pending,
-            processing: false,
-            processing_duration,
+            processing: !parameters_pending,
+            processing_timing: None,
+            exporting_pdf: false,
+            export_duration: None,
             progress: 0.0,
+            render_progress: Arc::new(AtomicU8::new(0)),
+            exported_pages: Arc::new(AtomicUsize::new(0)),
+            ready_path,
+        };
+        if parameters_pending {
+            (app, Task::none())
+        } else {
+            let report = app.report.clone();
+            let report_dir = app.report_dir.clone();
+            let progress = Arc::clone(&app.render_progress);
+            let task = Task::perform(
+                async move {
+                    let (pages, images, error, timing) =
+                        render_report(&report, &report_dir, ReportContext::new(), Some(&progress));
+                    RenderResult {
+                        pages,
+                        images,
+                        error,
+                        timing,
+                    }
+                },
+                Message::RenderFinished,
+            );
+            (app, task)
         }
     }
 }
@@ -209,6 +231,7 @@ enum Message {
     ZoomReset,
     ToggleDebug,
     ExportPdf,
+    PdfExported(Result<std::time::Duration, String>),
     OpenPdf,
     DismissError,
     ParameterChanged(usize, String),
@@ -224,7 +247,27 @@ struct RenderResult {
     pages: Vec<RenderedPage>,
     images: HashMap<String, PreviewImage>,
     error: Option<String>,
-    duration: std::time::Duration,
+    timing: RenderTiming,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct RenderTiming {
+    data: std::time::Duration,
+    layout: std::time::Duration,
+    images: std::time::Duration,
+    total: std::time::Duration,
+}
+
+impl RenderTiming {
+    fn summary(self) -> String {
+        format!(
+            "Data {} · Layout {} · Images {} · Total {}",
+            format_duration(self.data),
+            format_duration(self.layout),
+            format_duration(self.images),
+            format_duration(self.total),
+        )
+    }
 }
 
 fn ready_file_argument() -> Option<PathBuf> {
@@ -251,11 +294,15 @@ fn render_report(
     report: &Report,
     report_dir: &FsPath,
     mut context: ReportContext,
+    progress: Option<&AtomicU8>,
 ) -> (
     Vec<RenderedPage>,
     HashMap<String, PreviewImage>,
     Option<String>,
+    RenderTiming,
 ) {
+    let total_started = std::time::Instant::now();
+    set_render_progress(progress, 2);
     if report.data_sources.is_empty() {
         let example = example_context();
         for (name, value) in example.parameters() {
@@ -267,17 +314,55 @@ fn render_report(
             context.add_table("horeca_units", rows.clone());
         }
     }
+    let data_started = std::time::Instant::now();
     let error_message = load_report_data_sources(report, report_dir, &mut context)
         .err()
         .map(|error| format!("Data source failed: {error}"));
+    let data = data_started.elapsed();
+    set_render_progress(progress, 15);
+    let layout_started = std::time::Instant::now();
     let measurer = RealFontMeasurer::new();
+    let total_rows = report
+        .pages
+        .iter()
+        .flat_map(|page| &page.bands)
+        .filter_map(|band| match &band.kind {
+            BandKind::Data { source } => context.table(source).map(|rows| rows.len()),
+            _ => None,
+        })
+        .sum::<usize>()
+        .max(1);
+    let mut completed_rows = 0usize;
     let pages = report
         .pages
         .iter()
-        .flat_map(|page| LayoutEngine::render_with_measurer(page, &context, &measurer))
+        .flat_map(|page| {
+            LayoutEngine::render_with_measurer_and_progress(page, &context, &measurer, || {
+                completed_rows += 1;
+                let percent = 15 + (completed_rows.saturating_mul(78) / total_rows).min(78) as u8;
+                set_render_progress(progress, percent);
+            })
+        })
         .collect::<Vec<_>>();
+    let layout = layout_started.elapsed();
+    set_render_progress(progress, 94);
+    let images_started = std::time::Instant::now();
     let images = load_preview_images(&pages, report_dir);
-    (pages, images, error_message)
+    let images_duration = images_started.elapsed();
+    set_render_progress(progress, 100);
+    let timing = RenderTiming {
+        data,
+        layout,
+        images: images_duration,
+        total: total_started.elapsed(),
+    };
+    (pages, images, error_message, timing)
+}
+
+fn set_render_progress(progress: Option<&AtomicU8>, value: u8) {
+    if let Some(progress) = progress {
+        progress.store(value, Ordering::Relaxed);
+    }
 }
 
 struct PageCanvas<'a> {
@@ -672,27 +757,48 @@ impl PreviewApp {
             }
 
             Message::ExportPdf => {
-                let output_path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../output.pdf");
-
-                match report_pdf::PdfRenderer::render_to_file_with_base_dir(
-                    &self.pages,
-                    output_path,
-                    &self.report_dir,
-                ) {
-                    Ok(()) => {
+                if self.exporting_pdf || self.processing {
+                    return Task::none();
+                }
+                let pages = self.pages.clone();
+                let report_dir = self.report_dir.clone();
+                let exported_pages = Arc::clone(&self.exported_pages);
+                self.exporting_pdf = true;
+                self.export_duration = None;
+                self.progress = 0.0;
+                self.exported_pages.store(0, Ordering::Relaxed);
+                self.error_message = None;
+                return Task::perform(
+                    async move {
+                        let started = std::time::Instant::now();
+                        let output_path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../output.pdf");
+                        report_pdf::PdfRenderer::render_to_file_with_base_dir_and_progress(
+                            &pages,
+                            output_path,
+                            &report_dir,
+                            |completed, _| exported_pages.store(completed, Ordering::Relaxed),
+                        )
+                        .map(|()| started.elapsed())
+                        .map_err(|error| format!("Cannot create PDF: {error:?}"))
+                    },
+                    Message::PdfExported,
+                );
+            }
+            Message::PdfExported(result) => {
+                self.exporting_pdf = false;
+                match result {
+                    Ok(duration) => {
+                        self.export_duration = Some(duration);
+                        let output_path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../output.pdf");
                         println!("PDF created: {output_path}");
-
                         if let Err(error) = std::process::Command::new("xdg-open")
                             .arg(output_path)
                             .spawn()
                         {
-                            eprintln!("Cannot open PDF: {error}");
+                            self.error_message = Some(format!("Cannot open PDF: {error}"));
                         }
                     }
-
-                    Err(error) => {
-                        eprintln!("Cannot create PDF: {error:?}");
-                    }
+                    Err(error) => self.error_message = Some(error),
                 }
             }
 
@@ -739,19 +845,22 @@ impl PreviewApp {
                 }
                 let report = self.report.clone();
                 let report_dir = self.report_dir.clone();
+                let progress = Arc::clone(&self.render_progress);
                 self.parameters_pending = false;
                 self.processing = true;
                 self.progress = 0.0;
+                self.render_progress.store(0, Ordering::Relaxed);
+                self.export_duration = None;
                 self.error_message = None;
                 return Task::perform(
                     async move {
-                        let started = std::time::Instant::now();
-                        let (pages, images, error) = render_report(&report, &report_dir, context);
+                        let (pages, images, error, timing) =
+                            render_report(&report, &report_dir, context, Some(&progress));
                         RenderResult {
                             pages,
                             images,
                             error,
-                            duration: started.elapsed(),
+                            timing,
                         }
                     },
                     Message::RenderFinished,
@@ -779,10 +888,33 @@ impl PreviewApp {
                 self.error_message = result.error;
                 self.current_page = 0;
                 self.processing = false;
-                self.processing_duration = Some(result.duration);
+                self.processing_timing = Some(result.timing);
+                if let Some(path) = self.ready_path.take() {
+                    let summary =
+                        format!("{} pages · {}", self.pages.len(), result.timing.summary());
+                    let _ = std::fs::write(path, summary);
+                }
             }
             Message::ProcessingTick => {
-                self.progress = (self.progress + 3.0) % 200.0;
+                if self.processing {
+                    self.progress = self.render_progress.load(Ordering::Relaxed) as f32;
+                    if let Some(path) = self.ready_path.as_ref() {
+                        let stage = render_stage(self.progress);
+                        publish_preview_status(
+                            path,
+                            &format!("PROGRESS:{:.0}:{stage}", self.progress),
+                        );
+                    }
+                } else if self.exporting_pdf {
+                    let completed = self.exported_pages.load(Ordering::Relaxed);
+                    self.progress = if self.pages.is_empty() {
+                        0.0
+                    } else {
+                        completed as f32 * 95.0 / self.pages.len() as f32
+                    };
+                } else {
+                    self.progress = (self.progress + 3.0) % 200.0;
+                }
             }
         }
 
@@ -803,9 +935,18 @@ impl PreviewApp {
         } else {
             self.preview_content()
         };
-        let status_content: Element<'_, Message> = if self.processing {
+        let status_content: Element<'_, Message> = if self.processing || self.exporting_pdf {
+            let status_label = if self.exporting_pdf {
+                format!(
+                    "Exporting PDF · page {} of {}…",
+                    self.exported_pages.load(Ordering::Relaxed),
+                    self.pages.len()
+                )
+            } else {
+                render_stage(self.progress).to_string()
+            };
             row![
-                text("Processing data and rendering pages…").size(11),
+                text(status_label).size(11),
                 progress_bar(
                     0.0..=100.0,
                     if self.progress <= 100.0 {
@@ -820,11 +961,19 @@ impl PreviewApp {
             .spacing(10)
             .align_y(iced::Alignment::Center)
             .into()
-        } else if let Some(duration) = self.processing_duration {
+        } else if let Some(duration) = self.export_duration {
             text(format!(
-                "Generated {} pages in {}",
+                "PDF exported: {} pages in {}",
                 self.pages.len(),
                 format_duration(duration)
+            ))
+            .size(11)
+            .into()
+        } else if let Some(timing) = self.processing_timing {
+            text(format!(
+                "Generated {} pages · {}",
+                self.pages.len(),
+                timing.summary()
             ))
             .size(11)
             .into()
@@ -897,7 +1046,9 @@ impl PreviewApp {
                 .on_press(Message::ToggleDebug),
             button("Export PDF")
                 .style(common::style_button(6.0))
-                .on_press(Message::ExportPdf),
+                .on_press_maybe(
+                    (!self.exporting_pdf && !self.processing).then_some(Message::ExportPdf)
+                ),
             button("Open PDF")
                 .style(common::style_button(6.0))
                 .on_press(Message::OpenPdf),
@@ -1027,6 +1178,23 @@ impl PreviewApp {
     }
 }
 
+fn render_stage(progress: f32) -> &'static str {
+    if progress < 15.0 {
+        "Loading data…"
+    } else if progress < 94.0 {
+        "Rendering layout…"
+    } else {
+        "Loading images…"
+    }
+}
+
+fn publish_preview_status(path: &FsPath, contents: &str) {
+    let temporary = path.with_extension("ready.tmp");
+    if std::fs::write(&temporary, contents).is_ok() {
+        let _ = std::fs::rename(temporary, path);
+    }
+}
+
 fn main() -> iced::Result {
     let arguments = std::env::args().collect::<Vec<_>>();
     if arguments.get(1).is_some_and(|value| value == "--benchmark") {
@@ -1034,7 +1202,6 @@ fn main() -> iced::Result {
             eprintln!("usage: report-preview --benchmark <report.json>");
             return Ok(());
         };
-        let started = std::time::Instant::now();
         let report = match Report::from_file(path) {
             Ok(report) => report,
             Err(error) => {
@@ -1042,27 +1209,26 @@ fn main() -> iced::Result {
                 return Ok(());
             }
         };
-        let report_dir = FsPath::new(path).parent().unwrap_or_else(|| FsPath::new("."));
-        let (pages, _, error) = render_report(&report, report_dir, ReportContext::new());
+        let report_dir = FsPath::new(path)
+            .parent()
+            .unwrap_or_else(|| FsPath::new("."));
+        let (pages, _, error, timing) =
+            render_report(&report, report_dir, ReportContext::new(), None);
         if let Some(error) = error {
             eprintln!("{error}");
         }
-        println!(
-            "Rendered {} pages in {}",
-            pages.len(),
-            format_duration(started.elapsed())
-        );
+        println!("Rendered {} pages · {}", pages.len(), timing.summary());
         return Ok(());
     }
 
     let font_bytes = std::fs::read("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
         .expect("Cannot load DejaVuSans.ttf");
 
-    iced::application(PreviewApp::default, PreviewApp::update, PreviewApp::view)
+    iced::application(PreviewApp::boot, PreviewApp::update, PreviewApp::view)
         .title("report-rs Preview")
         .font(font_bytes)
         .subscription(|app| {
-            if app.processing {
+            if app.processing || app.exporting_pdf {
                 iced::time::every(std::time::Duration::from_millis(80))
                     .map(|_| Message::ProcessingTick)
             } else {

@@ -444,6 +444,20 @@ impl LayoutEngine {
         context: &ReportContext,
         measurer: &M,
     ) -> Vec<RenderedPage> {
+        Self::render_with_measurer_and_progress(page, context, measurer, || {})
+    }
+
+    /// Lays out a page and reports completion of each rendered data row.
+    pub fn render_with_measurer_and_progress<M, F>(
+        page: &Page,
+        context: &ReportContext,
+        measurer: &M,
+        mut row_rendered: F,
+    ) -> Vec<RenderedPage>
+    where
+        M: TextMeasurer,
+        F: FnMut(),
+    {
         let mut pages = Vec::new();
         let mut rendered_items = Vec::new();
 
@@ -621,6 +635,7 @@ impl LayoutEngine {
                             );
 
                             cursor_y = cursor_y + measured_height;
+                            row_rendered();
                         }
                     }
                 }
@@ -841,9 +856,16 @@ mod tests {
         let mut context = ReportContext::new();
         context.add_table("patients", (0..5).map(|_| Row::new()).collect());
 
-        let pages = LayoutEngine::render(&page, &context);
+        let mut rendered_rows = 0;
+        let pages = LayoutEngine::render_with_measurer_and_progress(
+            &page,
+            &context,
+            &ApproxTextMeasurer,
+            || rendered_rows += 1,
+        );
 
         assert_eq!(pages.len(), 3);
+        assert_eq!(rendered_rows, 5);
         assert!(pages.iter().all(|page| {
             matches!(page.items.first(), Some(RenderedItem::Line { x2, .. }) if *x2 == Mm(30.0))
         }));

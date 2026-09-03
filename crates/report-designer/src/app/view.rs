@@ -74,7 +74,7 @@ impl DesignerApp {
         let preview_progress: Element<'_, Message> = if self.preview_loading {
             container(
                 row![
-                    text("Preparing preview").size(11),
+                    text(&self.preview_stage).size(11),
                     progress_bar(
                         0.0..=100.0,
                         if self.preview_progress <= 100.0 {
