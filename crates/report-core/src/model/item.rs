@@ -159,7 +159,23 @@ pub struct ImageItem {
     pub source: String,
 
     #[serde(default)]
+    pub source_type: ImageSourceType,
+
+    #[serde(default, skip_serializing_if = "QuerySource::is_main")]
+    pub query_source: QuerySource,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub field: Option<String>,
+
+    #[serde(default)]
     pub fit: ImageFit,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ImageSourceType {
+    #[default]
+    File,
+    Database,
 }
 
 /// Controls how an image is placed inside its declared bounds.

@@ -7,6 +7,7 @@ use crate::model::{
     Band, BandKind, Border, Color, HorizontalAlign, ImageFit, Item, Mm, Padding, Page,
     VerticalAlign,
 };
+use std::hash::{DefaultHasher, Hash, Hasher};
 
 pub mod text;
 
@@ -78,6 +79,7 @@ pub enum RenderedItem {
         width: Mm,
         height: Mm,
         source: String,
+        data: Option<Vec<u8>>,
         fit: ImageFit,
     },
 }
@@ -147,7 +149,10 @@ impl LayoutEngine {
         measurer: &M,
     ) -> Mm {
         let current_query = match &band.kind {
-            BandKind::Data { source } => Some(source.as_str()),
+            BandKind::Data { source }
+            | BandKind::DataHeader { source, .. }
+            | BandKind::GroupHeader { source, .. }
+            | BandKind::GroupFooter { source, .. } => Some(source.as_str()),
             _ => None,
         };
         // The declared band height is a minimum. Fixed item bounds and text
@@ -235,7 +240,10 @@ impl LayoutEngine {
         rendered_items: &mut Vec<RenderedItem>,
     ) {
         let current_query = match &band.kind {
-            BandKind::Data { source } => Some(source.as_str()),
+            BandKind::Data { source }
+            | BandKind::DataHeader { source, .. }
+            | BandKind::GroupHeader { source, .. }
+            | BandKind::GroupFooter { source, .. } => Some(source.as_str()),
             _ => None,
         };
         for item in &band.items {
@@ -375,6 +383,34 @@ impl LayoutEngine {
             }
 
             Item::Image(image) => {
+                let data = if image.source_type == crate::model::ImageSourceType::Database {
+                    let query = match &image.query_source {
+                        crate::model::QuerySource::Main => current_query,
+                        crate::model::QuerySource::Named(query) => Some(query.as_str()),
+                    };
+                    query
+                        .and_then(|query| {
+                            if current_query == Some(query) {
+                                row
+                            } else {
+                                context.table(query).and_then(|rows| rows.first())
+                            }
+                        })
+                        .and_then(|row| image.field.as_deref().and_then(|field| row.get(field)))
+                        .and_then(|value| match value {
+                            Value::Blob(data) => Some(data.clone()),
+                            _ => None,
+                        })
+                } else {
+                    None
+                };
+                let source = if let Some(data) = data.as_ref() {
+                    let mut hasher = DefaultHasher::new();
+                    data.hash(&mut hasher);
+                    format!("database-image:{:016x}", hasher.finish())
+                } else {
+                    image.source.clone()
+                };
                 rendered_items.push(RenderedItem::Image {
                     x: offset_x + image.x,
                     y: offset_y + image.y,
@@ -382,7 +418,8 @@ impl LayoutEngine {
                     width: image.width,
                     height: image.height,
 
-                    source: image.source.clone(),
+                    source,
+                    data,
                     fit: image.fit,
                 });
             }
@@ -433,6 +470,64 @@ impl LayoutEngine {
 
     fn max_mm(left: Mm, right: Mm) -> Mm {
         if left > right { left } else { right }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn render_flow_band<M: TextMeasurer>(
+        band: &Band,
+        row: Option<&Row>,
+        context: &ReportContext,
+        page: &Page,
+        page_header: Option<&Band>,
+        page_footer: Option<&Band>,
+        printable_bottom: Mm,
+        measurer: &M,
+        pages: &mut Vec<RenderedPage>,
+        rendered_items: &mut Vec<RenderedItem>,
+        cursor_y: &mut Mm,
+    ) {
+        let height = Self::measure_band(band, row, context, measurer);
+        if *cursor_y + height > printable_bottom {
+            if let Some(footer) = page_footer {
+                Self::render_band(
+                    footer,
+                    page.margins.left,
+                    printable_bottom,
+                    None,
+                    context,
+                    measurer,
+                    rendered_items,
+                );
+            }
+            pages.push(RenderedPage {
+                width: page.width(),
+                height: page.height(),
+                items: std::mem::take(rendered_items),
+            });
+            *cursor_y = page.margins.top;
+            if let Some(header) = page_header {
+                Self::render_band(
+                    header,
+                    page.margins.left,
+                    *cursor_y,
+                    None,
+                    context,
+                    measurer,
+                    rendered_items,
+                );
+                *cursor_y = *cursor_y + Self::measure_band(header, None, context, measurer);
+            }
+        }
+        Self::render_band(
+            band,
+            page.margins.left,
+            *cursor_y,
+            row,
+            context,
+            measurer,
+            rendered_items,
+        );
+        *cursor_y = *cursor_y + height;
     }
 
     /// Lays out and paginates a page with caller-provided text metrics.
@@ -504,6 +599,8 @@ impl LayoutEngine {
                 crate::model::BandKind::PageHeader
                     | crate::model::BandKind::PageFooter
                     | crate::model::BandKind::DataHeader { .. }
+                    | crate::model::BandKind::GroupHeader { .. }
+                    | crate::model::BandKind::GroupFooter { .. }
             ) {
                 continue;
             }
@@ -533,6 +630,46 @@ impl LayoutEngine {
                                     matches!(candidate.kind, BandKind::DataHeader { .. })
                                 })
                             });
+                        // Header declaration order defines the group hierarchy:
+                        // the first header is the outermost group. Footers are
+                        // paired by source and field, so templates may place
+                        // them in the natural inner-to-outer visual order.
+                        let mut group_fields = Vec::<String>::new();
+                        let mut group_headers = Vec::<Option<&Band>>::new();
+                        let mut group_footers = Vec::<Option<&Band>>::new();
+                        for candidate in &page.bands {
+                            if let BandKind::GroupHeader {
+                                source: group_source,
+                                field,
+                                ..
+                            } = &candidate.kind
+                                && group_source == source
+                            {
+                                group_fields.push(field.clone());
+                                group_headers.push(Some(candidate));
+                                group_footers.push(None);
+                            }
+                        }
+                        for candidate in &page.bands {
+                            if let BandKind::GroupFooter {
+                                source: group_source,
+                                field,
+                            } = &candidate.kind
+                                && group_source == source
+                            {
+                                if let Some(index) =
+                                    group_fields.iter().position(|value| value == field)
+                                {
+                                    group_footers[index] = Some(candidate);
+                                } else {
+                                    // A footer without a header still creates a
+                                    // useful grouping level for subtotals.
+                                    group_fields.push(field.clone());
+                                    group_headers.push(None);
+                                    group_footers.push(Some(candidate));
+                                }
+                            }
+                        }
                         if !rows.is_empty()
                             && let Some(header) = data_header
                         {
@@ -548,6 +685,10 @@ impl LayoutEngine {
                             cursor_y =
                                 cursor_y + Self::measure_band(header, None, context, measurer);
                         }
+                        let mut current_group_keys = vec![None::<String>; group_fields.len()];
+                        let mut group_starts = vec![0usize; group_fields.len()];
+                        let mut numbered_rows = Vec::with_capacity(rows.len());
+                        let mut previous_row: Option<Row> = None;
                         for (row_index, row) in rows.iter().enumerate() {
                             let mut numbered_row = row.clone();
                             numbered_row.insert(
@@ -555,6 +696,62 @@ impl LayoutEngine {
                                 Value::Number((row_index + 1) as f64),
                             );
                             let row = &numbered_row;
+                            let row_group_keys = group_fields
+                                .iter()
+                                .map(|field| {
+                                    row.get(field).map(Value::as_string).unwrap_or_default()
+                                })
+                                .collect::<Vec<_>>();
+                            let changed_level = current_group_keys
+                                .iter()
+                                .zip(&row_group_keys)
+                                .position(|(current, next)| current.as_deref() != Some(next));
+                            if let Some(changed_level) = changed_level {
+                                // Close child groups before their parents.
+                                for level in (changed_level..group_fields.len()).rev() {
+                                    if current_group_keys[level].is_some()
+                                        && let Some(footer) = group_footers[level]
+                                    {
+                                        let group_rows =
+                                            numbered_rows[group_starts[level]..].to_vec();
+                                        let mut group_context = context.clone();
+                                        group_context.add_table(source, group_rows);
+                                        Self::render_flow_band(
+                                            footer,
+                                            previous_row.as_ref(),
+                                            &group_context,
+                                            page,
+                                            page_header,
+                                            page_footer,
+                                            printable_bottom,
+                                            measurer,
+                                            &mut pages,
+                                            &mut rendered_items,
+                                            &mut cursor_y,
+                                        );
+                                    }
+                                }
+                                // Open parent groups before their children.
+                                for level in changed_level..group_fields.len() {
+                                    current_group_keys[level] = Some(row_group_keys[level].clone());
+                                    group_starts[level] = numbered_rows.len();
+                                    if let Some(header) = group_headers[level] {
+                                        Self::render_flow_band(
+                                            header,
+                                            Some(row),
+                                            context,
+                                            page,
+                                            page_header,
+                                            page_footer,
+                                            printable_bottom,
+                                            measurer,
+                                            &mut pages,
+                                            &mut rendered_items,
+                                            &mut cursor_y,
+                                        );
+                                    }
+                                }
+                            }
                             let measured_height =
                                 Self::measure_band(band, Some(row), context, measurer);
 
@@ -622,6 +819,32 @@ impl LayoutEngine {
                                     cursor_y = cursor_y
                                         + Self::measure_band(header, None, context, measurer);
                                 }
+                                for header in group_headers.iter().flatten() {
+                                    if matches!(
+                                        header.kind,
+                                        BandKind::GroupHeader {
+                                            repeat_on_each_page: true,
+                                            ..
+                                        }
+                                    ) {
+                                        Self::render_band(
+                                            header,
+                                            page.margins.left,
+                                            cursor_y,
+                                            Some(row),
+                                            context,
+                                            measurer,
+                                            &mut rendered_items,
+                                        );
+                                        cursor_y = cursor_y
+                                            + Self::measure_band(
+                                                header,
+                                                Some(row),
+                                                context,
+                                                measurer,
+                                            );
+                                    }
+                                }
                             }
 
                             Self::render_band(
@@ -635,7 +858,32 @@ impl LayoutEngine {
                             );
 
                             cursor_y = cursor_y + measured_height;
+                            numbered_rows.push(numbered_row.clone());
+                            previous_row = Some(numbered_row);
                             row_rendered();
+                        }
+                        // Finish all remaining groups, innermost first.
+                        for level in (0..group_fields.len()).rev() {
+                            if current_group_keys[level].is_some()
+                                && let Some(footer) = group_footers[level]
+                            {
+                                let group_rows = numbered_rows[group_starts[level]..].to_vec();
+                                let mut group_context = context.clone();
+                                group_context.add_table(source, group_rows);
+                                Self::render_flow_band(
+                                    footer,
+                                    previous_row.as_ref(),
+                                    &group_context,
+                                    page,
+                                    page_header,
+                                    page_footer,
+                                    printable_bottom,
+                                    measurer,
+                                    &mut pages,
+                                    &mut rendered_items,
+                                    &mut cursor_y,
+                                );
+                            }
                         }
                     }
                 }
@@ -872,6 +1120,222 @@ mod tests {
     }
 
     #[test]
+    fn group_header_and_footer_wrap_each_group() {
+        let line = |x2| {
+            Item::Line(crate::model::LineItem {
+                name: String::new(),
+                x1: Mm(0.0),
+                y1: Mm(0.0),
+                x2: Mm(x2),
+                y2: Mm(0.0),
+                width: Mm(0.5),
+            })
+        };
+        let page = Page {
+            size: PageSize::A4,
+            orientation: Orientation::Portrait,
+            margins: Margins {
+                left: Mm(10.0),
+                top: Mm(10.0),
+                right: Mm(10.0),
+                bottom: Mm(10.0),
+            },
+            bands: vec![
+                Band {
+                    kind: BandKind::GroupHeader {
+                        source: "products".into(),
+                        field: "category".into(),
+                        repeat_on_each_page: false,
+                    },
+                    height: Mm(5.0),
+                    items: vec![line(10.0)],
+                },
+                Band {
+                    kind: BandKind::Data {
+                        source: "products".into(),
+                    },
+                    height: Mm(5.0),
+                    items: vec![line(20.0)],
+                },
+                Band {
+                    kind: BandKind::GroupFooter {
+                        source: "products".into(),
+                        field: "category".into(),
+                    },
+                    height: Mm(5.0),
+                    items: vec![line(30.0)],
+                },
+            ],
+        };
+        let mut context = ReportContext::new();
+        let rows = ["A", "A", "B"]
+            .into_iter()
+            .map(|category| {
+                let mut row = Row::new();
+                row.insert("category".into(), Value::String(category.into()));
+                row
+            })
+            .collect();
+        context.add_table("products", rows);
+
+        let rendered = LayoutEngine::render(&page, &context);
+        let line_ends = rendered[0]
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                RenderedItem::Line { x2, .. } => Some(x2.0),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(line_ends, vec![20.0, 30.0, 30.0, 40.0, 20.0, 30.0, 40.0]);
+    }
+
+    #[test]
+    fn nested_groups_close_children_before_parents() {
+        let line = |x2| {
+            Item::Line(crate::model::LineItem {
+                name: String::new(),
+                x1: Mm(0.0),
+                y1: Mm(0.0),
+                x2: Mm(x2),
+                y2: Mm(0.0),
+                width: Mm(0.5),
+            })
+        };
+        let group_header = |field: &str, marker| Band {
+            kind: BandKind::GroupHeader {
+                source: "products".into(),
+                field: field.into(),
+                repeat_on_each_page: false,
+            },
+            height: Mm(2.0),
+            items: vec![line(marker)],
+        };
+        let group_footer = |field: &str, marker| Band {
+            kind: BandKind::GroupFooter {
+                source: "products".into(),
+                field: field.into(),
+            },
+            height: Mm(2.0),
+            items: vec![line(marker)],
+        };
+        let page = Page {
+            size: PageSize::A4,
+            orientation: Orientation::Portrait,
+            margins: Margins {
+                left: Mm(10.0),
+                top: Mm(10.0),
+                right: Mm(10.0),
+                bottom: Mm(10.0),
+            },
+            bands: vec![
+                group_header("category", 11.0),
+                group_header("available", 12.0),
+                Band {
+                    kind: BandKind::Data {
+                        source: "products".into(),
+                    },
+                    height: Mm(2.0),
+                    items: vec![line(20.0)],
+                },
+                group_footer("available", 30.0),
+                group_footer("category", 40.0),
+            ],
+        };
+        let mut context = ReportContext::new();
+        let rows = [("A", "yes"), ("A", "yes"), ("A", "no"), ("B", "yes")]
+            .into_iter()
+            .map(|(category, available)| {
+                let mut row = Row::new();
+                row.insert("category".into(), Value::String(category.into()));
+                row.insert("available".into(), Value::String(available.into()));
+                row
+            })
+            .collect();
+        context.add_table("products", rows);
+
+        let rendered = LayoutEngine::render(&page, &context);
+        let markers = rendered[0]
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                RenderedItem::Line { x2, .. } => Some(x2.0),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            markers,
+            vec![
+                21.0, 22.0, 30.0, 30.0, 40.0, 22.0, 30.0, 40.0, 50.0, 21.0, 22.0, 30.0, 40.0, 50.0,
+            ]
+        );
+    }
+
+    #[test]
+    fn active_nested_group_headers_repeat_after_page_break() {
+        let line = |x2| {
+            Item::Line(crate::model::LineItem {
+                name: String::new(),
+                x1: Mm(0.0),
+                y1: Mm(0.0),
+                x2: Mm(x2),
+                y2: Mm(0.0),
+                width: Mm(0.5),
+            })
+        };
+        let group_header = |field: &str, marker| Band {
+            kind: BandKind::GroupHeader {
+                source: "products".into(),
+                field: field.into(),
+                repeat_on_each_page: true,
+            },
+            height: Mm(5.0),
+            items: vec![line(marker)],
+        };
+        let page = Page {
+            size: PageSize::A4,
+            orientation: Orientation::Portrait,
+            margins: Margins {
+                left: Mm(10.0),
+                top: Mm(10.0),
+                right: Mm(10.0),
+                bottom: Mm(10.0),
+            },
+            bands: vec![
+                group_header("category", 11.0),
+                group_header("available", 12.0),
+                Band {
+                    kind: BandKind::Data {
+                        source: "products".into(),
+                    },
+                    height: Mm(140.0),
+                    items: vec![line(20.0)],
+                },
+            ],
+        };
+        let mut context = ReportContext::new();
+        let rows = (0..3)
+            .map(|_| {
+                let mut row = Row::new();
+                row.insert("category".into(), Value::String("A".into()));
+                row.insert("available".into(), Value::String("yes".into()));
+                row
+            })
+            .collect();
+        context.add_table("products", rows);
+
+        let rendered = LayoutEngine::render(&page, &context);
+
+        assert_eq!(rendered.len(), 3);
+        assert!(rendered.iter().all(|page| {
+            matches!(page.items.first(), Some(RenderedItem::Line { x2, .. }) if *x2 == Mm(21.0))
+                && matches!(page.items.get(1), Some(RenderedItem::Line { x2, .. }) if *x2 == Mm(22.0))
+        }));
+    }
+
+    #[test]
     fn render_image_item() {
         let page = Page {
             size: PageSize::A4,
@@ -892,6 +1356,9 @@ mod tests {
                     width: Mm(40.0),
                     height: Mm(30.0),
                     source: "images/logo.png".to_string(),
+                    source_type: crate::model::ImageSourceType::File,
+                    query_source: crate::model::QuerySource::Main,
+                    field: None,
                     fit: ImageFit::Stretch,
                 })],
             }],
@@ -909,6 +1376,7 @@ mod tests {
                 height,
                 source,
                 fit,
+                ..
             } => {
                 assert_eq!(*x, Mm(15.0));
                 assert_eq!(*y, Mm(13.0));

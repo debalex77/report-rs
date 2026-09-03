@@ -36,13 +36,21 @@ pub(super) fn append<'a>(
             .into_iter()
             .map(str::to_string)
             .collect::<Vec<_>>();
-            let main_query = app
+            let band_query = app
                 .selection
                 .and_then(|selection| app.report.pages.first()?.bands.get(selection.band))
                 .and_then(|band| match &band.kind {
                     BandKind::Data { source } => Some(source.as_str()),
                     _ => None,
                 });
+            let mut report_queries = app
+                .report
+                .data_sources
+                .iter()
+                .flat_map(|source| source.queries.iter());
+            let first_query = report_queries.next().map(|query| query.name.as_str());
+            let only_query = first_query.filter(|_| report_queries.next().is_none());
+            let main_query = band_query.or(only_query);
             let mut queries = vec!["Main Query".to_string()];
             queries.extend(
                 app.report
@@ -55,10 +63,6 @@ pub(super) fn append<'a>(
             let selected_query = match &text_item.query_source {
                 QuerySource::Main => "Main Query".to_string(),
                 QuerySource::Named(name) => name.clone(),
-            };
-            let resolved_query = match &text_item.query_source {
-                QuerySource::Main => main_query,
-                QuerySource::Named(name) => Some(name.as_str()),
             };
             content = content
                 .push(
@@ -97,24 +101,33 @@ pub(super) fn append<'a>(
             )
             .on_right_press(Message::OpenQueryTextMenu(QueryTextTarget::ItemText))
             .into();
-            if text_item.value_type == ValueType::Expression {
-                content = content.push(text("Expression").size(11));
-                if resolved_query.is_some() {
-                    let delegate = container(
-                        button(container(text("•••").size(9)).center(Fill))
-                            .width(30)
-                            .height(26)
-                            .padding(0)
-                            .style(common::style_button(5.0))
-                            .on_press(Message::OpenQueryFieldPicker),
-                    )
-                    .padding(4)
-                    .align_right(Fill)
-                    .align_top(Fill);
-                    content = content.push(stack![editor, delegate]);
+            if matches!(
+                text_item.value_type,
+                ValueType::Integer
+                    | ValueType::Double
+                    | ValueType::Boolean
+                    | ValueType::Date
+                    | ValueType::DateTime
+                    | ValueType::Expression
+            ) {
+                let label = if text_item.value_type == ValueType::Expression {
+                    "Expression"
                 } else {
-                    content = content.push(editor);
-                }
+                    "Field / Value"
+                };
+                let delegate = container(
+                    button(container(text("•••").size(9)).center(Fill))
+                        .width(30)
+                        .height(26)
+                        .padding(0)
+                        .style(common::style_button(5.0))
+                        .on_press(Message::OpenQueryFieldPicker),
+                )
+                .padding(4)
+                .align_right(Fill)
+                .align_top(Fill);
+                content = content.push(text(label).size(11));
+                content = content.push(stack![editor, delegate]);
             } else if text_item.value_type == ValueType::Function {
                 let delegate = container(
                     button(container(text("•••").size(9)).center(Fill))
@@ -402,21 +415,63 @@ fn value_type_name(value_type: ValueType) -> &'static str {
 
 impl DesignerApp {
     pub(crate) fn function_picker_dialog(&self) -> Element<'_, Message> {
+        let mut available = vec![(
+            "Row number".to_string(),
+            "Sequential number of the current DataBand row".to_string(),
+            "${row_number}".to_string(),
+        )];
+        let mut query_names = self
+            .report
+            .data_sources
+            .iter()
+            .flat_map(|source| source.queries.iter().map(|query| query.name.clone()))
+            .collect::<Vec<_>>();
+        query_names.sort();
+        query_names.dedup();
+        for query in query_names {
+            available.push((
+                format!("Count · {query}"),
+                format!("Number of rows returned by {query}"),
+                format!("${{count({query})}}"),
+            ));
+            for field in self.query_fields.get(&query).into_iter().flatten() {
+                if !matches!(
+                    self.query_field_types.get(&(query.clone(), field.clone())),
+                    Some(ValueType::Integer | ValueType::Double)
+                ) {
+                    continue;
+                }
+                for (label, function, description) in [
+                    ("Sum", "sum", "Sum of all numeric values"),
+                    ("Average", "average", "Average of all numeric values"),
+                    ("Minimum", "min", "Smallest numeric value"),
+                    ("Maximum", "max", "Largest numeric value"),
+                ] {
+                    available.push((
+                        format!("{label} · {query}.{field}"),
+                        description.to_string(),
+                        format!("${{{function}({query}.{field})}}"),
+                    ));
+                }
+            }
+        }
+
         let mut functions = iced::widget::column![].spacing(6);
-        for (label, expression) in [("Row number", "${row_number}")] {
+        for (label, description, expression) in available {
             functions = functions.push(
                 button(container(
                     row![
                         iced::widget::column![
                             text(label).size(13),
-                            text("Sequential number of the current DataBand row")
+                            text(description)
                                 .size(10)
                                 .color(Color::from_rgb8(155, 160, 170)),
                         ]
                         .spacing(2)
                         .width(Fill),
-                        container(text(expression).size(11)).padding([4, 8]).style(
-                            |theme: &Theme| container::Style {
+                        container(text(expression.clone()).size(11))
+                            .padding([4, 8])
+                            .style(|theme: &Theme| container::Style {
                                 background: Some(Background::Color(
                                     theme.extended_palette().background.weak.color,
                                 )),
@@ -425,8 +480,7 @@ impl DesignerApp {
                                     ..Default::default()
                                 },
                                 ..Default::default()
-                            }
-                        ),
+                            }),
                     ]
                     .spacing(16)
                     .align_y(iced::Alignment::Center),
@@ -434,7 +488,7 @@ impl DesignerApp {
                 .width(Fill)
                 .padding([8, 10])
                 .style(common::style_button(7.0))
-                .on_press(Message::SelectFunction(expression.to_string())),
+                .on_press(Message::SelectFunction(expression)),
             );
         }
         dialog_container(
@@ -444,7 +498,7 @@ impl DesignerApp {
                     .size(11)
                     .color(Color::from_rgb8(155, 160, 170)),
                 rule::horizontal(1),
-                functions,
+                scrollable(functions).height(360),
                 row![
                     Space::new().width(Fill),
                     button(
@@ -461,7 +515,7 @@ impl DesignerApp {
             ]
             .spacing(14)
             .padding(20),
-            500.0,
+            620.0,
         )
     }
 }

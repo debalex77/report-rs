@@ -1,263 +1,101 @@
 <p align="center">
-  <a href="https://www.rust-lang.org/">
-    <img src="https://img.shields.io/badge/Rust-2024-orange?logo=rust" alt="Rust">
-  </a>
-<a href="https://iced.rs/">
-  <img src="https://img.shields.io/badge/GUI-Iced-blue?logo=rust&logoColor=white" alt="Iced">
-</a>
-  <a href="LICENSE">
-    <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT">
-  </a>
-  <a href="https://github.com/debalex77/report-rs/stargazers">
-    <img src="https://img.shields.io/github/stars/debalex77/report-rs?style=flat" alt="GitHub stars">
-  </a>
-  <a href="https://github.com/debalex77/report-rs/commits/main">
-    <img src="https://img.shields.io/github/last-commit/debalex77/report-rs" alt="Last commit">
-  </a>
-  <a href="https://github.com/debalex77/report-rs/actions/workflows/ci.yml">
-    <img src="https://github.com/debalex77/report-rs/actions/workflows/ci.yml/badge.svg" alt="CI">
-  </a>
+  <img src="assets/report-rs-logo.png" alt="report-rs" width="180">
 </p>
 
-# report-rs
+<h1 align="center">report-rs</h1>
 
-![report-rs logo](assets/report-rs-logo.png)
+<p align="center">A visual, band-based report designer and rendering engine written in Rust.</p>
 
-A report generation engine written in Rust.
+<p align="center">
+  <a href="https://github.com/debalex77/report-rs/actions/workflows/ci.yml"><img src="https://github.com/debalex77/report-rs/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="MIT License"></a>
+  <img src="https://img.shields.io/badge/Rust-2024-orange?logo=rust" alt="Rust 2024">
+  <img src="https://img.shields.io/badge/release-v0.1.0--alpha.1-blue" alt="v0.1.0-alpha.1">
+</p>
 
-`report-rs` is an experimental reporting engine inspired by traditional
-band-based report systems such as LimeReport.
+> **Alpha software:** the report format and user interface may still change.
 
-The project is being developed from scratch in Rust and focuses on separating
-the report model, layout engine, preview, and output rendering.
+## What it does
 
-## ✨ Current features
+`report-rs` provides a graphical Designer, interactive Preview and PDF renderer
+for JSON report templates. It is inspired by traditional band-based reporting
+tools while keeping the model and layout engine independent from the renderer.
 
-- JSON report serialization and deserialization
-- Page size, orientation, and margins
-- Band-based report layout
-- Report header and footer
-- Page header and footer
-- Data bands
-- Automatic pagination
-- Data source tables and report variables
-- Runtime report parameters
-- Text items
-- Word wrapping
-- Automatic text height
-- Horizontal and vertical text alignment
-- Text padding
-- Font family, size, bold, and italic styles
-- Real font measurement using `cosmic-text`
-- System font resolution
-- Text color and background
-- Borders
-- Line items
-- Rectangle items
-- Image items with PNG and JPEG support
-- Interactive report preview
-- Zoom and page navigation
-- PDF generation
-- PDF export directly from the preview
-- Graphical report designer with New, Load, Save, Reload, Undo, and Redo
-- Designer toolbox for bands, text, images, shapes, and layouts
-- Interactive item selection, drag, resize, and property editing
-- Collapsible Properties panel with geometry, text, font, color, and alignment controls
-- Millimeter rulers, design grid, zoom, and resizeable side panels
-- Horizontal and vertical layouts with nested-layout support
-- Designer settings for page orientation, margins, and default font family
-- Properties and Structure tabs with a recursive report tree
-- Structure tree SVG icons, expand/collapse, direct rename, and synchronized selection
-- Structure tree multi-selection with Ctrl/Shift and hierarchical Drag & Drop
-- Drag & Drop between bands and layouts with insertion/containment indicators
-- Layout dismantling and explicit handling when moving nested items between bands
-- Automatic band growth and contextual Fit band to contents
+Key features:
 
-## 🧱 Project structure
+- Report, page, data, group and footer bands with automatic pagination.
+- SQLite queries, parameters, filtering and sorting.
+- Text, lines, rectangles, file images and database BLOB images.
+- Value formatting, report functions and group subtotals.
+- Nested horizontal and vertical layouts.
+- Visual table generation, including row numbers and multiple grouping levels.
+- Preview progress, processing metrics and PDF export.
+
+## Run from source
+
+Requirements: a current stable Rust toolchain and a Linux desktop environment.
+
+Linux runtime dependencies: `zenity` (file dialogs), `xdg-open` (external PDF
+viewer launch), and installed fonts. DejaVu Sans is recommended for the examples;
+Preview falls back to system fonts if its usual Linux font file is absent.
+On Ubuntu/Debian, install `zenity`, `xdg-utils` and `fonts-dejavu-core`.
+
+```bash
+git clone https://github.com/debalex77/report-rs.git
+cd report-rs
+cargo run --release -p report-designer
+```
+
+Open a report directly:
+
+```bash
+cargo run --release -p report-designer -- examples/group_products.report.json
+```
+
+Run Preview directly:
+
+```bash
+cargo run --release -p report-preview -- examples/group_products.report.json
+```
+
+## Build and test
+
+```bash
+cargo build --workspace --release --locked
+cargo test --workspace --locked
+cargo fmt --all -- --check
+```
+
+Release archives contain `report-designer`, `report-preview`, examples and the
+license. Download them from [GitHub Releases](https://github.com/debalex77/report-rs/releases).
+
+## Examples
+
+- `simple.report.json` — basic static report.
+- `products_price.report.json` — SQLite data and database BLOB images.
+- `group_products.report.json` — products grouped by category.
+- `nested_group_products.report.json` — nested grouping and subtotals.
+
+The database-backed examples expect `examples/test.sqlite3` beside the report.
+The bundled database contains fictional demonstration data, as confirmed by
+the maintainer; it is not production data.
+
+## Project layout
 
 ```text
-report-rs/
-├── crates/
-│   ├── report-core/
-│   ├── report-pdf/
-│   ├── report-preview/
-│   ├── report-designer/
-│   └── report-cli/
-├── examples/
-├── Cargo.toml
-└── README.md
+crates/report-core      report model, data and layout engine
+crates/report-designer  graphical report designer
+crates/report-preview   interactive preview and PDF export
+crates/report-pdf       PDF renderer
+crates/report-cli       minimal embedding example
 ```
 
-### report-core
+Development notes and architecture are documented in
+[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). Changes included in each version are
+listed in [CHANGELOG.md](CHANGELOG.md). End-user instructions are available in
+the [User Manual](docs/UserManual.md).
 
-Contains the core report model and layout engine.
+## License
 
-```text
-report-core/src/
-├── datasource/
-│   ├── context.rs
-│   ├── mod.rs
-│   ├── provider.rs
-│   └── sqlite.rs
-├── font/
-│   ├── mod.rs
-│   ├── measurer.rs
-│   └── resolver.rs
-├── image/
-│   ├── mod.rs
-│   ├── layout.rs
-│   └── loader.rs
-├── layout/
-│   ├── mod.rs
-│   └── text.rs
-├── model/
-│   ├── band.rs
-│   ├── item.rs
-│   ├── mod.rs
-│   ├── page.rs
-│   ├── report.rs
-│   ├── style.rs
-│   └── tests.rs
-├── common.rs
-└── lib.rs
-```
-
-The original flat module paths remain available as compatibility re-exports,
-while new code uses the grouped module paths shown above.
-
-Responsibilities include:
-
-- report and page model
-- bands and report items
-- data sources and variables
-- text layout and word wrapping
-- font measurement
-- font resolution
-- pagination
-- generation of rendered pages
-
-### report-pdf
-
-Converts rendered pages produced by `report-core` into PDF documents.
-
-PDF generation is implemented using `printpdf`.
-
-### report-preview
-
-Interactive graphical report preview implemented using `iced`.
-
-It supports page navigation, zooming, debug visualization, and PDF export.
-
-### report-designer
-
-Graphical report designer implemented using `iced`.
-
-It can create, load, edit, and save JSON report definitions. The design canvas
-provides millimeter rulers and a grid, band and item tools, drag and resize
-handles, Undo/Redo history, and a resizeable Properties panel. Text, image,
-shape, horizontal-layout, and vertical-layout items can be added visually.
-Layouts can contain other layouts while their nested items remain selectable
-and editable. The Structure tab presents the full report hierarchy and supports
-direct renaming, multi-selection, and Drag & Drop between bands and layouts.
-Layouts can be dismantled from the context menu, while bands grow automatically
-when their content moves beyond the lower edge and can be fitted explicitly to
-their contents.
-
-### report-cli
-
-Small command-line application demonstrating how to load a report, run the
-layout engine, and generate a PDF document.
-
-## 📈 Report pipeline
-
-```text
-Report JSON
-     │
-     ▼
- Report model
-     │
-     ▼
-Layout Engine
-     │
-     ▼
-RenderedPage
-   ┌─┴──────────┐
-   ▼            ▼
-Preview       PDF
-```
-
-The layout engine is independent from the final output format. Both the
-preview and PDF renderer consume the same rendered page representation.
-
-## 📝 Example
-
-An example report is available in:
-
-```text
-examples/simple.report.json
-```
-
-Generate a PDF using:
-
-```bash
-cargo run -p report-cli
-```
-
-Run the graphical preview using:
-
-```bash
-cargo run -p report-preview
-```
-
-Run the report designer using:
-
-```bash
-cargo run -p report-designer -- examples/simple.report.json
-```
-
-Start it with an empty report using:
-
-```bash
-cargo run -p report-designer
-```
-
-## 📦 Building
-
-Build the complete workspace:
-
-```bash
-cargo build --workspace
-```
-
-Run all tests:
-
-```bash
-cargo test --workspace
-```
-
-Format the source code:
-
-```bash
-cargo fmt --all
-```
-
-## 🟢 Status
-
-`report-rs` is currently in early development.
-
-The report model, text layout, pagination, preview, and basic PDF rendering
-are functional. More report items and rendering features will be added as the
-engine evolves.
-
-## 💭 Planned features
-
-- Improved font fallback
-- Additional data source support
-- Expressions
-- More advanced page layout and layout constraints
-- Database-backed report data and query configuration
-- Additional Designer property editors and item types
-
-## ⚖️ License
-
-This project is licensed under the MIT License.
+Project code is licensed under the [MIT License](LICENSE). Third-party artwork
+retains its own licenses; see [Third-party notices](THIRD_PARTY_NOTICES.md).

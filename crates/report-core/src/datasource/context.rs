@@ -7,6 +7,7 @@ pub enum Value {
     String(String),
     Number(f64),
     Bool(bool),
+    Blob(Vec<u8>),
     Null,
 }
 
@@ -21,7 +22,7 @@ pub type Row = HashMap<String, Value>;
 /// - named tables used by data bands;
 /// - global variables used in text expressions;
 /// - input parameters supplied by the calling application.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct ReportContext {
     tables: HashMap<String, Vec<Row>>,
     variables: HashMap<String, Value>,
@@ -89,6 +90,7 @@ impl Value {
             Value::String(value) => value.clone(),
             Value::Number(value) => value.to_string(),
             Value::Bool(value) => value.to_string(),
+            Value::Blob(_) => "[BLOB]".to_string(),
             // Null values are rendered as empty text.
             Value::Null => String::new(),
         }

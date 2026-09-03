@@ -1,0 +1,383 @@
+{
+  "alloc-stdlib-0.2.4": {
+    "revision": "ae42d22078b98549e987d2f03d12df7b984fde47",
+    "repository": "dropbox/rust-alloc-no-stdlib",
+    "license": "BSD-3-Clause",
+    "files": [
+      {
+        "file": "alloc-stdlib-0.2.4/LICENSE",
+        "url": "https://raw.githubusercontent.com/dropbox/rust-alloc-no-stdlib/ae42d22078b98549e987d2f03d12df7b984fde47/LICENSE",
+        "sha256": "c0c56f26d9c051cac4d200c34c84e7ae9aaa853e01a982a1df08b09931e518ae"
+      }
+    ]
+  },
+  "azul-core-0.0.5": {
+    "revision": "d1ac2f67adc3ebdf99bb7b0197714396803f0363",
+    "repository": "maps4print/azul",
+    "license": "MPL-2.0",
+    "files": [
+      {
+        "file": "azul-core-0.0.5/LICENSE",
+        "url": "https://raw.githubusercontent.com/maps4print/azul/d1ac2f67adc3ebdf99bb7b0197714396803f0363/LICENSE",
+        "sha256": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5"
+      }
+    ]
+  },
+  "azul-layout-0.0.5": {
+    "revision": "d1ac2f67adc3ebdf99bb7b0197714396803f0363",
+    "repository": "maps4print/azul",
+    "license": "MPL-2.0",
+    "files": [
+      {
+        "file": "azul-layout-0.0.5/LICENSE",
+        "url": "https://raw.githubusercontent.com/maps4print/azul/d1ac2f67adc3ebdf99bb7b0197714396803f0363/LICENSE",
+        "sha256": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5"
+      }
+    ]
+  },
+  "azul-css-0.0.5": {
+    "revision": "52048a85880a3f9fdce3d74d9f5ceeffea6e29ce",
+    "repository": "maps4print/azul",
+    "license": "MPL-2.0",
+    "files": [
+      {
+        "file": "azul-css-0.0.5/LICENSE",
+        "url": "https://raw.githubusercontent.com/maps4print/azul/52048a85880a3f9fdce3d74d9f5ceeffea6e29ce/LICENSE",
+        "sha256": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5"
+      }
+    ]
+  },
+  "convert_case-0.4.0": {
+    "revision": "300d9eef9e8c970e15f324afbc3df8b6a4ebbf71",
+    "repository": "rutrum/convert-case",
+    "license": "MIT",
+    "files": []
+  },
+  "gpu-alloc-0.6.2": {
+    "revision": "61020bdcb4eb04fca6bbf748aeb9570e859236e0",
+    "repository": "zakarumych/gpu-alloc",
+    "license": "MIT OR Apache-2.0",
+    "files": [
+      {
+        "file": "gpu-alloc-0.6.2/COPYING",
+        "url": "https://raw.githubusercontent.com/zakarumych/gpu-alloc/61020bdcb4eb04fca6bbf748aeb9570e859236e0/COPYING",
+        "sha256": "12121dfa588677007848ab922a45a1e3248868f6ff063598fceb3141d7897314"
+      }
+    ]
+  },
+  "gpu-alloc-types-0.3.1": {
+    "revision": "7ddd1fe576fcfc503347eb97e476a47581479f22",
+    "repository": "zakarumych/gpu-alloc",
+    "license": "MIT OR Apache-2.0",
+    "files": [
+      {
+        "file": "gpu-alloc-types-0.3.1/COPYING",
+        "url": "https://raw.githubusercontent.com/zakarumych/gpu-alloc/7ddd1fe576fcfc503347eb97e476a47581479f22/COPYING",
+        "sha256": "12121dfa588677007848ab922a45a1e3248868f6ff063598fceb3141d7897314"
+      }
+    ]
+  },
+  "gpu-descriptor-0.3.2": {
+    "revision": "bb28b4e55b742e0ea3e7a0968e7ee6287ba0e06a",
+    "repository": "zakarumych/gpu-descriptor",
+    "license": "MIT OR Apache-2.0",
+    "files": [
+      {
+        "file": "gpu-descriptor-0.3.2/COPYING",
+        "url": "https://raw.githubusercontent.com/zakarumych/gpu-descriptor/bb28b4e55b742e0ea3e7a0968e7ee6287ba0e06a/COPYING",
+        "sha256": "f72143f7e9d9fb8bd336b139fa22f825a299591c29f2f7338c5566347b137613"
+      }
+    ]
+  },
+  "gpu-descriptor-types-0.2.0": {
+    "revision": "9f2fb9546591322e7b77ee1e79385e01effd85e4",
+    "repository": "zakarumych/gpu-descriptor",
+    "license": "MIT OR Apache-2.0",
+    "files": [
+      {
+        "file": "gpu-descriptor-types-0.2.0/COPYING",
+        "url": "https://raw.githubusercontent.com/zakarumych/gpu-descriptor/9f2fb9546591322e7b77ee1e79385e01effd85e4/COPYING",
+        "sha256": "f72143f7e9d9fb8bd336b139fa22f825a299591c29f2f7338c5566347b137613"
+      }
+    ]
+  },
+  "hexf-parse-0.2.1": {
+    "revision": "4225763d744183d720f575ae96d04161b4d08ea0",
+    "repository": "lifthrasiir/hexf",
+    "license": "CC0-1.0",
+    "files": []
+  },
+  "highway-0.8.1": {
+    "revision": "25d8ebbbc2b52cff1739aa995dd187e5fe973b80",
+    "repository": "nickbabcock/highway-rs",
+    "license": "MIT",
+    "files": [
+      {
+        "file": "highway-0.8.1/LICENSE.txt",
+        "url": "https://raw.githubusercontent.com/nickbabcock/highway-rs/25d8ebbbc2b52cff1739aa995dd187e5fe973b80/LICENSE.txt",
+        "sha256": "91276db973f25602d1aa43491f59cbc84cb88e6f151e1d0cc82a755563ce0195"
+      }
+    ]
+  },
+  "iced_widget-0.14.2": {
+    "revision": "54abf81d13fec06d4d9ac754b03ce2c3313e8a1f",
+    "repository": "iced-rs/iced",
+    "license": "MIT",
+    "files": [
+      {
+        "file": "iced_widget-0.14.2/LICENSE",
+        "url": "https://raw.githubusercontent.com/iced-rs/iced/54abf81d13fec06d4d9ac754b03ce2c3313e8a1f/LICENSE",
+        "sha256": "fc9086ba4eba4b77e4c603906362742bc3715ffa2c7810c6074fe7780d3a0398"
+      }
+    ]
+  },
+  "kuchiki-0.8.1": {
+    "revision": "f652e38b12cb0d33f7bb0565b6933a6e2823a0c5",
+    "repository": "SimonSapin/kuchiki",
+    "license": "MIT",
+    "files": []
+  },
+  "lyon-1.0.19": {
+    "revision": "56219c95c658d4f39de7b190d98e57d5773ba241",
+    "repository": "nical/lyon",
+    "license": "MIT OR Apache-2.0",
+    "files": [
+      {
+        "file": "lyon-1.0.19/LICENSE-APACHE",
+        "url": "https://raw.githubusercontent.com/nical/lyon/56219c95c658d4f39de7b190d98e57d5773ba241/LICENSE-APACHE",
+        "sha256": "216486f29671a4262efe32af6d84a75bef398127f8c5f369b5c8305983887a06"
+      },
+      {
+        "file": "lyon-1.0.19/LICENSE-MIT",
+        "url": "https://raw.githubusercontent.com/nical/lyon/56219c95c658d4f39de7b190d98e57d5773ba241/LICENSE-MIT",
+        "sha256": "80f275e90d799911ed3830a7f242a2ef5a4ade2092fe0aa07bfb2d2cf2f2b95e"
+      }
+    ]
+  },
+  "lyon_geom-1.0.19": {
+    "revision": "56219c95c658d4f39de7b190d98e57d5773ba241",
+    "repository": "nical/lyon",
+    "license": "MIT OR Apache-2.0",
+    "files": [
+      {
+        "file": "lyon_geom-1.0.19/LICENSE-APACHE",
+        "url": "https://raw.githubusercontent.com/nical/lyon/56219c95c658d4f39de7b190d98e57d5773ba241/LICENSE-APACHE",
+        "sha256": "216486f29671a4262efe32af6d84a75bef398127f8c5f369b5c8305983887a06"
+      },
+      {
+        "file": "lyon_geom-1.0.19/LICENSE-MIT",
+        "url": "https://raw.githubusercontent.com/nical/lyon/56219c95c658d4f39de7b190d98e57d5773ba241/LICENSE-MIT",
+        "sha256": "80f275e90d799911ed3830a7f242a2ef5a4ade2092fe0aa07bfb2d2cf2f2b95e"
+      }
+    ]
+  },
+  "lyon_path-1.0.19": {
+    "revision": "56219c95c658d4f39de7b190d98e57d5773ba241",
+    "repository": "nical/lyon",
+    "license": "MIT OR Apache-2.0",
+    "files": [
+      {
+        "file": "lyon_path-1.0.19/LICENSE-APACHE",
+        "url": "https://raw.githubusercontent.com/nical/lyon/56219c95c658d4f39de7b190d98e57d5773ba241/LICENSE-APACHE",
+        "sha256": "216486f29671a4262efe32af6d84a75bef398127f8c5f369b5c8305983887a06"
+      },
+      {
+        "file": "lyon_path-1.0.19/LICENSE-MIT",
+        "url": "https://raw.githubusercontent.com/nical/lyon/56219c95c658d4f39de7b190d98e57d5773ba241/LICENSE-MIT",
+        "sha256": "80f275e90d799911ed3830a7f242a2ef5a4ade2092fe0aa07bfb2d2cf2f2b95e"
+      }
+    ]
+  },
+  "lyon_algorithms-1.0.20": {
+    "revision": "66b9ea7f4ab935763970e828781d8fd5e9305542",
+    "repository": "nical/lyon",
+    "license": "MIT OR Apache-2.0",
+    "files": [
+      {
+        "file": "lyon_algorithms-1.0.20/LICENSE-APACHE",
+        "url": "https://raw.githubusercontent.com/nical/lyon/66b9ea7f4ab935763970e828781d8fd5e9305542/LICENSE-APACHE",
+        "sha256": "216486f29671a4262efe32af6d84a75bef398127f8c5f369b5c8305983887a06"
+      },
+      {
+        "file": "lyon_algorithms-1.0.20/LICENSE-MIT",
+        "url": "https://raw.githubusercontent.com/nical/lyon/66b9ea7f4ab935763970e828781d8fd5e9305542/LICENSE-MIT",
+        "sha256": "80f275e90d799911ed3830a7f242a2ef5a4ade2092fe0aa07bfb2d2cf2f2b95e"
+      }
+    ]
+  },
+  "lyon_tessellation-1.0.20": {
+    "revision": "7fa75ea8eea36255cae2abcf709900b0c7a5c309",
+    "repository": "nical/lyon",
+    "license": "MIT OR Apache-2.0",
+    "files": [
+      {
+        "file": "lyon_tessellation-1.0.20/LICENSE-APACHE",
+        "url": "https://raw.githubusercontent.com/nical/lyon/7fa75ea8eea36255cae2abcf709900b0c7a5c309/LICENSE-APACHE",
+        "sha256": "216486f29671a4262efe32af6d84a75bef398127f8c5f369b5c8305983887a06"
+      },
+      {
+        "file": "lyon_tessellation-1.0.20/LICENSE-MIT",
+        "url": "https://raw.githubusercontent.com/nical/lyon/7fa75ea8eea36255cae2abcf709900b0c7a5c309/LICENSE-MIT",
+        "sha256": "80f275e90d799911ed3830a7f242a2ef5a4ade2092fe0aa07bfb2d2cf2f2b95e"
+      }
+    ]
+  },
+  "pathfinder_geometry-0.5.1": {
+    "files": []
+  },
+  "pathfinder_simd-0.5.6": {
+    "revision": "6c3c0466f451c5bd2007087728cd168798cd64e8",
+    "repository": "servo/pathfinder",
+    "license": "MIT OR Apache-2.0",
+    "files": [
+      {
+        "file": "pathfinder_simd-0.5.6/LICENSE-APACHE",
+        "url": "https://raw.githubusercontent.com/servo/pathfinder/6c3c0466f451c5bd2007087728cd168798cd64e8/LICENSE-APACHE",
+        "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+      },
+      {
+        "file": "pathfinder_simd-0.5.6/LICENSE-MIT",
+        "url": "https://raw.githubusercontent.com/servo/pathfinder/6c3c0466f451c5bd2007087728cd168798cd64e8/LICENSE-MIT",
+        "sha256": "0621878e61f0d0fda054bcbe02df75192c28bde1ecc8289cbd86aeba2dd72720"
+      }
+    ]
+  },
+  "phf-0.8.0": {
+    "revision": "81c7cc5b48649108428671d3b8ad151f6fbdb359",
+    "repository": "sfackler/rust-phf",
+    "license": "MIT",
+    "files": [
+      {
+        "file": "phf-0.8.0/LICENSE",
+        "url": "https://raw.githubusercontent.com/sfackler/rust-phf/81c7cc5b48649108428671d3b8ad151f6fbdb359/LICENSE",
+        "sha256": "d8870d5e2ab20fc50915b711c5aa7588131c9abcc1bcb980da1efd7486522a46"
+      }
+    ]
+  },
+  "phf_codegen-0.8.0": {
+    "revision": "81c7cc5b48649108428671d3b8ad151f6fbdb359",
+    "repository": "sfackler/rust-phf",
+    "license": "MIT",
+    "files": [
+      {
+        "file": "phf_codegen-0.8.0/LICENSE",
+        "url": "https://raw.githubusercontent.com/sfackler/rust-phf/81c7cc5b48649108428671d3b8ad151f6fbdb359/LICENSE",
+        "sha256": "d8870d5e2ab20fc50915b711c5aa7588131c9abcc1bcb980da1efd7486522a46"
+      }
+    ]
+  },
+  "phf_generator-0.8.0": {
+    "revision": "81c7cc5b48649108428671d3b8ad151f6fbdb359",
+    "repository": "sfackler/rust-phf",
+    "license": "MIT",
+    "files": [
+      {
+        "file": "phf_generator-0.8.0/LICENSE",
+        "url": "https://raw.githubusercontent.com/sfackler/rust-phf/81c7cc5b48649108428671d3b8ad151f6fbdb359/LICENSE",
+        "sha256": "d8870d5e2ab20fc50915b711c5aa7588131c9abcc1bcb980da1efd7486522a46"
+      }
+    ]
+  },
+  "phf_macros-0.8.0": {
+    "revision": "81c7cc5b48649108428671d3b8ad151f6fbdb359",
+    "repository": "sfackler/rust-phf",
+    "license": "MIT",
+    "files": [
+      {
+        "file": "phf_macros-0.8.0/LICENSE",
+        "url": "https://raw.githubusercontent.com/sfackler/rust-phf/81c7cc5b48649108428671d3b8ad151f6fbdb359/LICENSE",
+        "sha256": "d8870d5e2ab20fc50915b711c5aa7588131c9abcc1bcb980da1efd7486522a46"
+      }
+    ]
+  },
+  "phf_shared-0.8.0": {
+    "revision": "81c7cc5b48649108428671d3b8ad151f6fbdb359",
+    "repository": "sfackler/rust-phf",
+    "license": "MIT",
+    "files": [
+      {
+        "file": "phf_shared-0.8.0/LICENSE",
+        "url": "https://raw.githubusercontent.com/sfackler/rust-phf/81c7cc5b48649108428671d3b8ad151f6fbdb359/LICENSE",
+        "sha256": "d8870d5e2ab20fc50915b711c5aa7588131c9abcc1bcb980da1efd7486522a46"
+      }
+    ]
+  },
+  "profiling-1.0.18": {
+    "revision": "8271551172eb6fa4cba47369aedd93790c623df9",
+    "repository": "aclysma/profiling",
+    "license": "MIT OR Apache-2.0",
+    "files": [
+      {
+        "file": "profiling-1.0.18/LICENSE-APACHE",
+        "url": "https://raw.githubusercontent.com/aclysma/profiling/8271551172eb6fa4cba47369aedd93790c623df9/LICENSE-APACHE",
+        "sha256": "10d30a673cd5e9349bdc02aeb48f14b3386d27d0da32df8f0a555d4aa16aa551"
+      },
+      {
+        "file": "profiling-1.0.18/LICENSE-MIT",
+        "url": "https://raw.githubusercontent.com/aclysma/profiling/8271551172eb6fa4cba47369aedd93790c623df9/LICENSE-MIT",
+        "sha256": "c8167fdeeed46d3f244d3f85c5bf998ce889343691c32be2c61a8bc4b5c08333"
+      }
+    ]
+  },
+  "selectors-0.22.0": {
+    "files": []
+  },
+  "spirv-0.3.0+sdk-1.3.268.0": {
+    "revision": "e91a5debc10c395b36db7721dfff6326d697a1e2",
+    "repository": "gfx-rs/rspirv",
+    "license": "Apache-2.0",
+    "files": [
+      {
+        "file": "spirv-0.3.0+sdk-1.3.268.0/LICENSE",
+        "url": "https://raw.githubusercontent.com/gfx-rs/rspirv/e91a5debc10c395b36db7721dfff6326d697a1e2/LICENSE",
+        "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+      }
+    ]
+  },
+  "svg_fmt-0.4.5": {
+    "revision": "93f414cd572b5c2781df93dbdc068ed13443d05a",
+    "repository": "nical/rust_debug",
+    "license": "MIT/Apache-2.0",
+    "files": [
+      {
+        "file": "svg_fmt-0.4.5/LICENSE",
+        "url": "https://raw.githubusercontent.com/nical/rust_debug/93f414cd572b5c2781df93dbdc068ed13443d05a/LICENSE",
+        "sha256": "7e98bed7f100747aaae7d82ab94fbe6b76fd6b84b09a3aaa413bff8196d0fbb1"
+      }
+    ]
+  },
+  "zune-core-0.4.12": {
+    "revision": "f8fbb123d5ed04441e8324a555bfcda0cb1bd28f",
+    "repository": "etemesi254/zune-image",
+    "license": "MIT OR Apache-2.0 OR Zlib",
+    "files": [
+      {
+        "file": "zune-core-0.4.12/LICENSE-ZLIB",
+        "url": "https://raw.githubusercontent.com/etemesi254/zune-image/f8fbb123d5ed04441e8324a555bfcda0cb1bd28f/LICENSE-ZLIB",
+        "sha256": "7fa429541e55b1509909e058f2d21a37467e4958ec713b357f6e0cf9dc4ee352"
+      },
+      {
+        "file": "zune-core-0.4.12/LICENSE.md",
+        "url": "https://raw.githubusercontent.com/etemesi254/zune-image/f8fbb123d5ed04441e8324a555bfcda0cb1bd28f/LICENSE.md",
+        "sha256": "c6dff146a9f31848ac296faa5a08a4253caf2c384c86f906dc99e7fc0a39cc8c"
+      }
+    ]
+  },
+  "zune-jpeg-0.4.21": {
+    "revision": "fa2c767a01d7d9373911d0bf63e0588553d67e0e",
+    "repository": "etemesi254/zune-image",
+    "license": "MIT OR Apache-2.0 OR Zlib",
+    "files": [
+      {
+        "file": "zune-jpeg-0.4.21/LICENSE-ZLIB",
+        "url": "https://raw.githubusercontent.com/etemesi254/zune-image/fa2c767a01d7d9373911d0bf63e0588553d67e0e/LICENSE-ZLIB",
+        "sha256": "7fa429541e55b1509909e058f2d21a37467e4958ec713b357f6e0cf9dc4ee352"
+      },
+      {
+        "file": "zune-jpeg-0.4.21/LICENSE.md",
+        "url": "https://raw.githubusercontent.com/etemesi254/zune-image/fa2c767a01d7d9373911d0bf63e0588553d67e0e/LICENSE.md",
+        "sha256": "c6dff146a9f31848ac296faa5a08a4253caf2c384c86f906dc99e7fc0a39cc8c"
+      }
+    ]
+  }
+}

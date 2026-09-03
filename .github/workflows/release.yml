@@ -1,0 +1,58 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    name: Linux x86_64
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        run: rustup toolchain install stable --profile minimal
+
+      - name: Run tests
+        run: cargo +stable test --workspace --locked
+
+      - name: Test dependency notice collector
+        run: python3 -B -m unittest discover -s scripts -p 'test_*.py'
+
+      - name: Build release applications
+        run: cargo +stable build --release --locked -p report-designer -p report-preview
+
+      - name: Create release archive
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          mkdir -p "dist/report-rs-${RELEASE_TAG}-linux-x86_64/examples"
+          cp target/release/report-designer "dist/report-rs-${RELEASE_TAG}-linux-x86_64/"
+          cp target/release/report-preview "dist/report-rs-${RELEASE_TAG}-linux-x86_64/"
+          cp README.md CHANGELOG.md LICENSE THIRD_PARTY_NOTICES.md "dist/report-rs-${RELEASE_TAG}-linux-x86_64/"
+          cp -r LICENSES "dist/report-rs-${RELEASE_TAG}-linux-x86_64/"
+          cp -r docs "dist/report-rs-${RELEASE_TAG}-linux-x86_64/"
+          mkdir -p "dist/report-rs-${RELEASE_TAG}-linux-x86_64/assets/exemples"
+          cp assets/report-rs-logo.png "dist/report-rs-${RELEASE_TAG}-linux-x86_64/assets/"
+          cp assets/exemples/approved.svg assets/exemples/approved.png "dist/report-rs-${RELEASE_TAG}-linux-x86_64/assets/exemples/"
+          cp examples/*.report.json examples/test.sqlite3 "dist/report-rs-${RELEASE_TAG}-linux-x86_64/examples/"
+          python3 scripts/dependency_notices.py "dist/report-rs-${RELEASE_TAG}-linux-x86_64/DEPENDENCY_NOTICES"
+          tar -C dist -czf "dist/report-rs-${RELEASE_TAG}-linux-x86_64.tar.gz" "report-rs-${RELEASE_TAG}-linux-x86_64"
+          cd dist
+          sha256sum "report-rs-${RELEASE_TAG}-linux-x86_64.tar.gz" > "report-rs-${RELEASE_TAG}-linux-x86_64.tar.gz.sha256"
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: true
+          generate_release_notes: true
+          files: |
+            dist/*.tar.gz
+            dist/*.sha256

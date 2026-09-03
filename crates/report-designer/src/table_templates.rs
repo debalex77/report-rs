@@ -13,6 +13,17 @@ pub(crate) struct TableTemplate {
     pub(crate) center_table: bool,
     #[serde(default)]
     pub(crate) include_row_number: bool,
+    #[serde(default)]
+    pub(crate) groups: Vec<TableTemplateGroup>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub(crate) struct TableTemplateGroup {
+    pub(crate) field: String,
+    #[serde(default = "default_true")]
+    pub(crate) include_header: bool,
+    #[serde(default = "default_true")]
+    pub(crate) include_footer: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize)]

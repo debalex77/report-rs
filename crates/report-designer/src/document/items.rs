@@ -37,6 +37,9 @@ pub(crate) fn new_image_item() -> Item {
         width: Mm(50.0),
         height: Mm(20.0),
         source: String::new(),
+        source_type: ImageSourceType::File,
+        query_source: QuerySource::Main,
+        field: None,
         fit: ImageFit::Contain,
     })
 }

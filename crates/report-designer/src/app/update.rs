@@ -298,6 +298,10 @@ impl DesignerApp {
                     }
                 }) {
                     self.mark_dirty();
+                    if value_type == ValueType::Function {
+                        self.load_function_query_fields();
+                        self.function_picker_visible = true;
+                    }
                 } else {
                     self.undo_stack.pop();
                 }
@@ -331,15 +335,28 @@ impl DesignerApp {
                     return Task::none();
                 };
                 let query_name = match &text_item.query_source {
-                    QuerySource::Main => self
-                        .report
-                        .pages
-                        .first()
-                        .and_then(|page| page.bands.get(selection.band))
-                        .and_then(|band| match &band.kind {
-                            BandKind::Data { source } if !source.is_empty() => Some(source.clone()),
-                            _ => None,
-                        }),
+                    QuerySource::Main => {
+                        let band_query = self
+                            .report
+                            .pages
+                            .first()
+                            .and_then(|page| page.bands.get(selection.band))
+                            .and_then(|band| match &band.kind {
+                                BandKind::Data { source } if !source.is_empty() => {
+                                    Some(source.clone())
+                                }
+                                _ => None,
+                            });
+                        band_query.or_else(|| {
+                            let mut queries = self
+                                .report
+                                .data_sources
+                                .iter()
+                                .flat_map(|source| source.queries.iter());
+                            let first = queries.next()?;
+                            queries.next().is_none().then(|| first.name.clone())
+                        })
+                    }
                     QuerySource::Named(name) => Some(name.clone()),
                 };
                 let Some(query_name) = query_name else {
@@ -418,7 +435,10 @@ impl DesignerApp {
                 self.query_field_picker = None;
             }
             Message::CloseQueryFieldPicker => self.query_field_picker = None,
-            Message::OpenFunctionPicker => self.function_picker_visible = true,
+            Message::OpenFunctionPicker => {
+                self.load_function_query_fields();
+                self.function_picker_visible = true;
+            }
             Message::SelectFunction(function) => {
                 self.record_undo();
                 self.text_inputs
@@ -475,6 +495,41 @@ impl DesignerApp {
                 self.record_undo();
                 if self.update_selected_image(|item| item.source = source) {
                     self.refresh_images();
+                    self.mark_dirty();
+                }
+            }
+            Message::ImageSourceTypeChanged(source_type) => {
+                let source_type = if source_type == "Database BLOB" {
+                    ImageSourceType::Database
+                } else {
+                    ImageSourceType::File
+                };
+                self.record_undo();
+                if self.update_selected_image(|item| item.source_type = source_type) {
+                    if source_type == ImageSourceType::Database {
+                        self.load_function_query_fields();
+                    }
+                    self.refresh_images();
+                    self.mark_dirty();
+                }
+            }
+            Message::ImageQuerySourceChanged(query) => {
+                let query_source = if query == "Main Query" {
+                    QuerySource::Main
+                } else {
+                    QuerySource::Named(query)
+                };
+                self.record_undo();
+                if self.update_selected_image(|item| {
+                    item.query_source = query_source;
+                    item.field = None;
+                }) {
+                    self.mark_dirty();
+                }
+            }
+            Message::ImageFieldChanged(field) => {
+                self.record_undo();
+                if self.update_selected_image(|item| item.field = Some(field)) {
                     self.mark_dirty();
                 }
             }
@@ -814,9 +869,26 @@ impl DesignerApp {
                     self.mark_dirty();
                 }
             }
+            Message::GroupFieldChanged(field) => {
+                self.record_undo();
+                if self.update_active_group_field(field.clone()) {
+                    self.band_inputs.group_field = field;
+                    self.mark_dirty();
+                } else {
+                    self.undo_stack.pop();
+                }
+            }
             Message::DataHeaderRepeatChanged(repeat) => {
                 self.record_undo();
                 if self.update_active_data_header_repeat(repeat) {
+                    self.mark_dirty();
+                } else {
+                    self.undo_stack.pop();
+                }
+            }
+            Message::GroupHeaderRepeatChanged(repeat) => {
+                self.record_undo();
+                if self.update_active_group_header_repeat(repeat) {
                     self.mark_dirty();
                 } else {
                     self.undo_stack.pop();
@@ -1695,6 +1767,7 @@ impl DesignerApp {
                             .collect(),
                         center_table: true,
                         include_row_number: false,
+                        groups: Vec::new(),
                         template_name: String::new(),
                     });
                     self.error_message = None;
@@ -1810,6 +1883,70 @@ impl DesignerApp {
                     drop.include_row_number = include;
                 }
             }
+            Message::AddGeneratedGroup => {
+                if let Some(drop) = &mut self.pending_data_field_drop
+                    && let Some(field) = drop
+                        .columns
+                        .iter()
+                        .map(|column| &column.field)
+                        .find(|field| !drop.groups.iter().any(|group| &group.field == *field))
+                {
+                    drop.groups.push(TableGroupSpec {
+                        field: field.clone(),
+                        include_header: true,
+                        include_footer: true,
+                    });
+                }
+            }
+            Message::GeneratedGroupFieldChanged(index, field) => {
+                if let Some(group) = self
+                    .pending_data_field_drop
+                    .as_mut()
+                    .and_then(|drop| drop.groups.get_mut(index))
+                {
+                    group.field = field;
+                }
+            }
+            Message::GeneratedGroupHeaderChanged(index, include) => {
+                if let Some(group) = self
+                    .pending_data_field_drop
+                    .as_mut()
+                    .and_then(|drop| drop.groups.get_mut(index))
+                {
+                    group.include_header = include;
+                }
+            }
+            Message::GeneratedGroupFooterChanged(index, include) => {
+                if let Some(group) = self
+                    .pending_data_field_drop
+                    .as_mut()
+                    .and_then(|drop| drop.groups.get_mut(index))
+                {
+                    group.include_footer = include;
+                }
+            }
+            Message::MoveGeneratedGroupUp(index) => {
+                if index > 0
+                    && let Some(drop) = &mut self.pending_data_field_drop
+                    && index < drop.groups.len()
+                {
+                    drop.groups.swap(index, index - 1);
+                }
+            }
+            Message::MoveGeneratedGroupDown(index) => {
+                if let Some(drop) = &mut self.pending_data_field_drop
+                    && index + 1 < drop.groups.len()
+                {
+                    drop.groups.swap(index, index + 1);
+                }
+            }
+            Message::RemoveGeneratedGroup(index) => {
+                if let Some(drop) = &mut self.pending_data_field_drop
+                    && index < drop.groups.len()
+                {
+                    drop.groups.remove(index);
+                }
+            }
             Message::TableTemplateNameChanged(name) => {
                 if let Some(drop) = &mut self.pending_data_field_drop {
                     drop.template_name = name;
@@ -1828,6 +1965,15 @@ impl DesignerApp {
                     name: name.clone(),
                     center_table: drop.center_table,
                     include_row_number: drop.include_row_number,
+                    groups: drop
+                        .groups
+                        .iter()
+                        .map(|group| table_templates::TableTemplateGroup {
+                            field: group.field.clone(),
+                            include_header: group.include_header,
+                            include_footer: group.include_footer,
+                        })
+                        .collect(),
                     columns: drop
                         .columns
                         .iter()
@@ -1874,12 +2020,12 @@ impl DesignerApp {
                 let current_fields = drop
                     .columns
                     .iter()
-                    .map(|column| column.field.as_str())
+                    .map(|column| column.field.clone())
                     .collect::<HashSet<_>>();
                 let template_fields = template
                     .columns
                     .iter()
-                    .map(|column| column.field.as_str())
+                    .map(|column| column.field.clone())
                     .collect::<HashSet<_>>();
                 if current_fields != template_fields {
                     self.set_error("The template fields do not match the selected query fields");
@@ -1903,6 +2049,16 @@ impl DesignerApp {
                     .collect();
                 drop.center_table = template.center_table;
                 drop.include_row_number = template.include_row_number;
+                drop.groups = template
+                    .groups
+                    .into_iter()
+                    .filter(|group| current_fields.contains(&group.field))
+                    .map(|group| TableGroupSpec {
+                        field: group.field,
+                        include_header: group.include_header,
+                        include_footer: group.include_footer,
+                    })
+                    .collect();
                 drop.template_name = template.name;
                 self.error_message = None;
             }
@@ -1963,6 +2119,7 @@ impl DesignerApp {
                     &columns,
                     include_header,
                     drop.center_table,
+                    &drop.groups,
                     font_family,
                 ) {
                     Ok(()) => {

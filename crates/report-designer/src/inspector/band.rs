@@ -56,7 +56,10 @@ pub(super) fn append<'a>(
         );
     if matches!(
         band.kind,
-        BandKind::Data { .. } | BandKind::DataHeader { .. }
+        BandKind::Data { .. }
+            | BandKind::DataHeader { .. }
+            | BandKind::GroupHeader { .. }
+            | BandKind::GroupFooter { .. }
     ) {
         let queries = app
             .report
@@ -76,6 +79,33 @@ pub(super) fn append<'a>(
                     .placeholder("Select query")
                     .text_size(12)
                     .padding(4),
+            );
+        }
+    }
+    if matches!(
+        band.kind,
+        BandKind::GroupHeader { .. } | BandKind::GroupFooter { .. }
+    ) {
+        let fields = app
+            .query_fields
+            .get(&app.band_inputs.data_source)
+            .cloned()
+            .unwrap_or_default();
+        content = content.push(text("Group field").size(11));
+        if fields.is_empty() {
+            content =
+                content.push(text("Expand the query in the Data tab to load fields.").size(10));
+        } else {
+            content = content.push(
+                pick_list(
+                    fields,
+                    (!app.band_inputs.group_field.is_empty())
+                        .then(|| app.band_inputs.group_field.clone()),
+                    Message::GroupFieldChanged,
+                )
+                .placeholder("Select group field")
+                .text_size(12)
+                .padding(4),
             );
         }
     }
@@ -105,6 +135,24 @@ pub(super) fn append<'a>(
                 },
                 ..Default::default()
             }),
+        );
+    }
+    if let BandKind::GroupHeader {
+        repeat_on_each_page,
+        ..
+    } = band.kind
+    {
+        content = content.push(
+            container(
+                toggler(repeat_on_each_page)
+                    .label("Repeat group header on each page")
+                    .text_size(11)
+                    .size(18)
+                    .spacing(8)
+                    .on_toggle(Message::GroupHeaderRepeatChanged),
+            )
+            .padding([5, 7])
+            .width(Fill),
         );
     }
     content.push(text("Choose an item tool to insert it in this band.").size(11))

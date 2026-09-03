@@ -33,7 +33,12 @@ impl DesignerApp {
             return false;
         };
         let is_data_pair = match page.bands.get(active_band).map(|band| &band.kind) {
-            Some(BandKind::Data { .. } | BandKind::DataHeader { .. }) => true,
+            Some(
+                BandKind::Data { .. }
+                | BandKind::DataHeader { .. }
+                | BandKind::GroupHeader { .. }
+                | BandKind::GroupFooter { .. },
+            ) => true,
             _ => return false,
         };
         if !is_data_pair {
@@ -47,11 +52,75 @@ impl DesignerApp {
             | BandKind::DataHeader {
                 source: band_source,
                 ..
+            }
+            | BandKind::GroupHeader {
+                source: band_source,
+                ..
+            }
+            | BandKind::GroupFooter {
+                source: band_source,
+                ..
             } = &mut band.kind
                 && *band_source != source
             {
                 band_source.clone_from(&source);
                 changed = true;
+            }
+        }
+        changed
+    }
+
+    pub(super) fn update_active_group_field(&mut self, field: String) -> bool {
+        let Some(active_band) = self.active_band else {
+            return false;
+        };
+        let Some(page) = self.report.pages.first_mut() else {
+            return false;
+        };
+        let Some((source, old_field, active_is_header)) =
+            page.bands
+                .get(active_band)
+                .and_then(|band| match &band.kind {
+                    BandKind::GroupHeader { source, field, .. } => {
+                        Some((source.clone(), field.clone(), true))
+                    }
+                    BandKind::GroupFooter { source, field } => {
+                        Some((source.clone(), field.clone(), false))
+                    }
+                    _ => None,
+                })
+        else {
+            return false;
+        };
+        let mut changed = false;
+        for (index, band) in page.bands.iter_mut().enumerate() {
+            match &mut band.kind {
+                BandKind::GroupHeader {
+                    source: band_source,
+                    field: band_field,
+                    ..
+                } if index == active_band
+                    || (!active_is_header
+                        && *band_source == source
+                        && *band_field == old_field) =>
+                {
+                    if *band_field != field {
+                        band_field.clone_from(&field);
+                        changed = true;
+                    }
+                }
+                BandKind::GroupFooter {
+                    source: band_source,
+                    field: band_field,
+                } if index == active_band
+                    || (active_is_header && *band_source == source && *band_field == old_field) =>
+                {
+                    if *band_field != field {
+                        band_field.clone_from(&field);
+                        changed = true;
+                    }
+                }
+                _ => {}
             }
         }
         changed
@@ -65,6 +134,27 @@ impl DesignerApp {
             return false;
         };
         let BandKind::DataHeader {
+            repeat_on_each_page,
+            ..
+        } = &mut band.kind
+        else {
+            return false;
+        };
+        if *repeat_on_each_page == repeat {
+            return false;
+        }
+        *repeat_on_each_page = repeat;
+        true
+    }
+
+    pub(super) fn update_active_group_header_repeat(&mut self, repeat: bool) -> bool {
+        let Some(band) = self
+            .active_band
+            .and_then(|index| self.report.pages.first_mut()?.bands.get_mut(index))
+        else {
+            return false;
+        };
+        let BandKind::GroupHeader {
             repeat_on_each_page,
             ..
         } = &mut band.kind

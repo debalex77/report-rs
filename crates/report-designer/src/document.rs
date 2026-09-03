@@ -56,6 +56,8 @@ pub(super) fn same_band_kind(left: &BandKind, right: &BandKind) -> bool {
             | (BandKind::PageHeader, BandKind::PageHeader)
             | (BandKind::Data { .. }, BandKind::Data { .. })
             | (BandKind::DataHeader { .. }, BandKind::DataHeader { .. })
+            | (BandKind::GroupHeader { .. }, BandKind::GroupHeader { .. })
+            | (BandKind::GroupFooter { .. }, BandKind::GroupFooter { .. })
             | (BandKind::PageFooter, BandKind::PageFooter)
             | (BandKind::ReportFooter, BandKind::ReportFooter)
     )

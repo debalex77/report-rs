@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use iced::widget::image::Handle;
 use report_core::image::loader::load_image;
-use report_core::model::{Item, Report};
+use report_core::model::{ImageSourceType, Item, Report};
 
 #[derive(Clone)]
 pub(crate) struct DesignerImage {
@@ -48,7 +48,9 @@ pub(crate) fn load_designer_images(
 fn collect_image_sources(items: &[Item], sources: &mut HashSet<String>) {
     for item in items {
         match item {
-            Item::Image(image) if !image.source.is_empty() => {
+            Item::Image(image)
+                if image.source_type == ImageSourceType::File && !image.source.is_empty() =>
+            {
                 sources.insert(image.source.clone());
             }
             Item::HorizontalLayout(layout) | Item::VerticalLayout(layout) => {
@@ -62,7 +64,7 @@ fn collect_image_sources(items: &[Item], sources: &mut HashSet<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use report_core::model::{ImageFit, ImageItem, LayoutItem, Mm};
+    use report_core::model::{ImageFit, ImageItem, ImageSourceType, LayoutItem, Mm, QuerySource};
 
     #[test]
     fn collects_sources_from_nested_layouts() {
@@ -79,6 +81,9 @@ mod tests {
                 width: Mm(10.0),
                 height: Mm(10.0),
                 source: "logo.png".to_string(),
+                source_type: ImageSourceType::File,
+                query_source: QuerySource::Main,
+                field: None,
                 fit: ImageFit::Contain,
             })],
         })];

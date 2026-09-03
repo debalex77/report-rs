@@ -3619,7 +3619,7 @@ checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
 
 [[package]]
 name = "report-cli"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "report-core",
  "report-pdf",
@@ -3627,13 +3627,14 @@ dependencies = [
 
 [[package]]
 name = "report-core"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "chrono",
  "cosmic-text 0.14.2",
  "fontdb 0.16.2",
  "iced",
  "image",
+ "resvg",
  "rusqlite",
  "serde",
  "serde_json",
@@ -3642,7 +3643,7 @@ dependencies = [
 
 [[package]]
 name = "report-designer"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "iced",
  "report-core",
@@ -3652,7 +3653,7 @@ dependencies = [
 
 [[package]]
 name = "report-pdf"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "printpdf",
  "report-core",
@@ -3661,7 +3662,7 @@ dependencies = [
 
 [[package]]
 name = "report-preview"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "iced",
  "report-core",

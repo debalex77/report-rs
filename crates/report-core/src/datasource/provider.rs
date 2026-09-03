@@ -217,7 +217,7 @@ fn compare_to_filter(value: Option<&Value>, filter: &QueryFilter) -> Option<Orde
                 Some(value.to_lowercase().cmp(&filter.value.to_lowercase()))
             }
         }
-        Value::Null => None,
+        Value::Blob(_) | Value::Null => None,
     }
 }
 
@@ -241,6 +241,9 @@ fn compare_values(left: Option<&Value>, right: Option<&Value>) -> Ordering {
         (Some(Value::Number(left)), Some(Value::Number(right))) => left.total_cmp(right),
         (Some(Value::Bool(left)), Some(Value::Bool(right))) => left.cmp(right),
         (Some(Value::String(left)), Some(Value::String(right))) => left.cmp(right),
+        (Some(Value::Blob(_)), Some(Value::Blob(_))) => Ordering::Equal,
+        (Some(Value::Blob(_)), _) => Ordering::Less,
+        (_, Some(Value::Blob(_))) => Ordering::Greater,
         (Some(Value::Null) | None, Some(Value::Null) | None) => Ordering::Equal,
         (Some(Value::Null) | None, _) => Ordering::Less,
         (_, Some(Value::Null) | None) => Ordering::Greater,

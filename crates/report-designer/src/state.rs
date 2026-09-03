@@ -261,6 +261,8 @@ pub(crate) enum DesignerTool {
     ReportHeader,
     DataHeader,
     DataBand,
+    GroupHeader,
+    GroupFooter,
     ReportFooter,
     Text,
     Image,

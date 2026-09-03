@@ -1,0 +1,644 @@
+{
+  "name": "Untitled report",
+  "parameters": [
+    {
+      "name": "position",
+      "type": "Text",
+      "default_value": "Chef",
+      "required": true
+    }
+  ],
+  "data_sources": [
+    {
+      "name": "main",
+      "connection": {
+        "type": "sqlite",
+        "path": "test.sqlite3"
+      },
+      "queries": [
+        {
+          "name": "products",
+          "sql": "SELECT id,\n       category_id,\n       name,\n       description,\n       unit,\n       price,\n       available,\n       created_at\n  FROM products LIMIT 10;"
+        },
+        {
+          "name": "employees",
+          "sql": "SELECT id,\n       restaurant_id,\n       first_name,\n       last_name,\n       first_name ||' '|| last_name as fullName,\n       position,\n       phone,\n       salary,\n       active\n  FROM employees WHERE position = :position;"
+        },
+        {
+          "name": "restaurant",
+          "sql": "SELECT name, logo, approved FROM restaurants WHERE id = 2;"
+        }
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "size": "A4",
+      "orientation": "Portrait",
+      "margins": {
+        "left": 10.0,
+        "top": 10.0,
+        "right": 10.0,
+        "bottom": 10.0
+      },
+      "bands": [
+        {
+          "kind": "ReportHeader",
+          "height": 30.0,
+          "items": [
+            {
+              "type": "Text",
+              "name": "itemText11",
+              "x": 51.222767,
+              "y": 9.170944,
+              "width": 134.45076,
+              "height": 10.0,
+              "text": "Products and Prices",
+              "font_size": 15.0,
+              "font_family": "DejaVu Sans",
+              "bold": true,
+              "italic": false,
+              "text_color": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 255
+              },
+              "horizontal_align": "Center",
+              "vertical_align": "Center",
+              "word_wrap": false,
+              "auto_height": false,
+              "padding": {
+                "left": 0.0,
+                "top": 0.0,
+                "right": 0.0,
+                "bottom": 0.0
+              },
+              "background": null,
+              "border": {
+                "left": false,
+                "top": false,
+                "right": false,
+                "bottom": true,
+                "width": 0.5
+              }
+            },
+            {
+              "type": "Image",
+              "name": "itemImage1",
+              "x": 3.1477401,
+              "y": 3.7263231,
+              "width": 44.07657,
+              "height": 20.0,
+              "source": "",
+              "source_type": "Database",
+              "query_source": {
+                "Named": "restaurant"
+              },
+              "field": "logo",
+              "fit": "Contain"
+            }
+          ]
+        },
+        {
+          "kind": {
+            "DataHeader": {
+              "source": "products",
+              "repeat_on_each_page": true
+            }
+          },
+          "height": 8.0,
+          "items": [
+            {
+              "type": "HorizontalLayout",
+              "name": "horizontalLayout1",
+              "x": 0.0,
+              "y": 0.0,
+              "width": 190.0,
+              "height": 8.0,
+              "items": [
+                {
+                  "type": "Text",
+                  "name": "itemText1",
+                  "x": 0.0,
+                  "y": 0.0,
+                  "width": 12.0,
+                  "height": 8.0,
+                  "text": "Nr.",
+                  "font_size": 12.0,
+                  "font_family": "DejaVu Sans",
+                  "bold": true,
+                  "italic": false,
+                  "text_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0,
+                    "a": 255
+                  },
+                  "horizontal_align": "Center",
+                  "vertical_align": "Center",
+                  "word_wrap": false,
+                  "auto_height": false,
+                  "padding": {
+                    "left": 1.0,
+                    "top": 0.5,
+                    "right": 1.0,
+                    "bottom": 0.5
+                  },
+                  "background": {
+                    "r": 221,
+                    "g": 255,
+                    "b": 244,
+                    "a": 255
+                  },
+                  "border": {
+                    "left": true,
+                    "top": true,
+                    "right": true,
+                    "bottom": true,
+                    "width": 0.3
+                  }
+                },
+                {
+                  "type": "Text",
+                  "name": "itemText2",
+                  "x": 12.0,
+                  "y": 0.0,
+                  "width": 38.085056,
+                  "height": 8.0,
+                  "text": "Name products",
+                  "font_size": 12.0,
+                  "font_family": "DejaVu Sans",
+                  "bold": true,
+                  "italic": false,
+                  "text_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0,
+                    "a": 255
+                  },
+                  "horizontal_align": "Center",
+                  "vertical_align": "Center",
+                  "word_wrap": false,
+                  "auto_height": false,
+                  "padding": {
+                    "left": 1.0,
+                    "top": 0.5,
+                    "right": 1.0,
+                    "bottom": 0.5
+                  },
+                  "background": {
+                    "r": 221,
+                    "g": 255,
+                    "b": 244,
+                    "a": 255
+                  },
+                  "border": {
+                    "left": true,
+                    "top": true,
+                    "right": true,
+                    "bottom": true,
+                    "width": 0.3
+                  }
+                },
+                {
+                  "type": "Text",
+                  "name": "itemText3",
+                  "x": 50.085056,
+                  "y": 0.0,
+                  "width": 100.32392,
+                  "height": 8.0,
+                  "text": "Description products",
+                  "font_size": 12.0,
+                  "font_family": "DejaVu Sans",
+                  "bold": true,
+                  "italic": false,
+                  "text_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0,
+                    "a": 255
+                  },
+                  "horizontal_align": "Center",
+                  "vertical_align": "Center",
+                  "word_wrap": false,
+                  "auto_height": false,
+                  "padding": {
+                    "left": 1.0,
+                    "top": 0.5,
+                    "right": 1.0,
+                    "bottom": 0.5
+                  },
+                  "background": {
+                    "r": 221,
+                    "g": 255,
+                    "b": 244,
+                    "a": 255
+                  },
+                  "border": {
+                    "left": true,
+                    "top": true,
+                    "right": true,
+                    "bottom": true,
+                    "width": 0.3
+                  }
+                },
+                {
+                  "type": "Text",
+                  "name": "itemText4",
+                  "x": 150.40898,
+                  "y": 0.0,
+                  "width": 18.912209,
+                  "height": 8.0,
+                  "text": "Unit",
+                  "font_size": 12.0,
+                  "font_family": "DejaVu Sans",
+                  "bold": true,
+                  "italic": false,
+                  "text_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0,
+                    "a": 255
+                  },
+                  "horizontal_align": "Center",
+                  "vertical_align": "Center",
+                  "word_wrap": false,
+                  "auto_height": false,
+                  "padding": {
+                    "left": 1.0,
+                    "top": 0.5,
+                    "right": 1.0,
+                    "bottom": 0.5
+                  },
+                  "background": {
+                    "r": 221,
+                    "g": 255,
+                    "b": 244,
+                    "a": 255
+                  },
+                  "border": {
+                    "left": true,
+                    "top": true,
+                    "right": true,
+                    "bottom": true,
+                    "width": 0.3
+                  }
+                },
+                {
+                  "type": "Text",
+                  "name": "itemText5",
+                  "x": 169.32126,
+                  "y": 0.0,
+                  "width": 20.678768,
+                  "height": 8.0,
+                  "text": "Price",
+                  "font_size": 12.0,
+                  "font_family": "DejaVu Sans",
+                  "bold": true,
+                  "italic": false,
+                  "text_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0,
+                    "a": 255
+                  },
+                  "horizontal_align": "Center",
+                  "vertical_align": "Center",
+                  "word_wrap": false,
+                  "auto_height": false,
+                  "padding": {
+                    "left": 1.0,
+                    "top": 0.5,
+                    "right": 1.0,
+                    "bottom": 0.5
+                  },
+                  "background": {
+                    "r": 221,
+                    "g": 255,
+                    "b": 244,
+                    "a": 255
+                  },
+                  "border": {
+                    "left": true,
+                    "top": true,
+                    "right": true,
+                    "bottom": true,
+                    "width": 0.3
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": {
+            "Data": {
+              "source": "products"
+            }
+          },
+          "height": 19.626667,
+          "items": [
+            {
+              "type": "HorizontalLayout",
+              "name": "horizontalLayout2",
+              "x": 0.0,
+              "y": 0.0,
+              "width": 190.0,
+              "height": 19.626667,
+              "items": [
+                {
+                  "type": "Text",
+                  "name": "itemText6",
+                  "x": 0.0,
+                  "y": 0.0,
+                  "width": 12.0,
+                  "height": 19.626667,
+                  "text": "${row_number}",
+                  "value_type": "Integer",
+                  "font_size": 11.0,
+                  "font_family": "DejaVu Sans",
+                  "bold": false,
+                  "italic": false,
+                  "text_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0,
+                    "a": 255
+                  },
+                  "horizontal_align": "Center",
+                  "vertical_align": "Center",
+                  "word_wrap": true,
+                  "auto_height": true,
+                  "padding": {
+                    "left": 1.0,
+                    "top": 0.5,
+                    "right": 1.0,
+                    "bottom": 0.5
+                  },
+                  "background": null,
+                  "border": {
+                    "left": true,
+                    "top": true,
+                    "right": true,
+                    "bottom": true,
+                    "width": 0.3
+                  }
+                },
+                {
+                  "type": "Text",
+                  "name": "itemText7",
+                  "x": 12.0,
+                  "y": 0.0,
+                  "width": 38.17498,
+                  "height": 19.626667,
+                  "text": "${name}",
+                  "font_size": 11.0,
+                  "font_family": "DejaVu Sans",
+                  "bold": false,
+                  "italic": false,
+                  "text_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0,
+                    "a": 255
+                  },
+                  "horizontal_align": "Left",
+                  "vertical_align": "Center",
+                  "word_wrap": true,
+                  "auto_height": true,
+                  "padding": {
+                    "left": 1.0,
+                    "top": 0.5,
+                    "right": 1.0,
+                    "bottom": 0.5
+                  },
+                  "background": null,
+                  "border": {
+                    "left": true,
+                    "top": true,
+                    "right": true,
+                    "bottom": true,
+                    "width": 0.3
+                  }
+                },
+                {
+                  "type": "Text",
+                  "name": "itemText8",
+                  "x": 50.17498,
+                  "y": 0.0,
+                  "width": 100.02367,
+                  "height": 19.626667,
+                  "text": "${description}",
+                  "font_size": 11.0,
+                  "font_family": "DejaVu Sans",
+                  "bold": false,
+                  "italic": false,
+                  "text_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0,
+                    "a": 255
+                  },
+                  "horizontal_align": "Left",
+                  "vertical_align": "Center",
+                  "word_wrap": true,
+                  "auto_height": true,
+                  "padding": {
+                    "left": 1.0,
+                    "top": 0.5,
+                    "right": 1.0,
+                    "bottom": 0.5
+                  },
+                  "background": null,
+                  "border": {
+                    "left": true,
+                    "top": true,
+                    "right": true,
+                    "bottom": true,
+                    "width": 0.3
+                  }
+                },
+                {
+                  "type": "Text",
+                  "name": "itemText9",
+                  "x": 150.19868,
+                  "y": 0.0,
+                  "width": 19.179497,
+                  "height": 19.626667,
+                  "text": "${unit}",
+                  "font_size": 11.0,
+                  "font_family": "DejaVu Sans",
+                  "bold": false,
+                  "italic": false,
+                  "text_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0,
+                    "a": 255
+                  },
+                  "horizontal_align": "Center",
+                  "vertical_align": "Center",
+                  "word_wrap": true,
+                  "auto_height": true,
+                  "padding": {
+                    "left": 1.0,
+                    "top": 0.5,
+                    "right": 1.0,
+                    "bottom": 0.5
+                  },
+                  "background": null,
+                  "border": {
+                    "left": true,
+                    "top": true,
+                    "right": true,
+                    "bottom": true,
+                    "width": 0.3
+                  }
+                },
+                {
+                  "type": "Text",
+                  "name": "itemText10",
+                  "x": 169.37814,
+                  "y": 0.0,
+                  "width": 20.621803,
+                  "height": 19.626667,
+                  "text": "${price}",
+                  "value_type": "Double",
+                  "value_format": {
+                    "decimal_places": 2
+                  },
+                  "font_size": 11.0,
+                  "font_family": "DejaVu Sans",
+                  "bold": false,
+                  "italic": false,
+                  "text_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0,
+                    "a": 255
+                  },
+                  "horizontal_align": "Right",
+                  "vertical_align": "Center",
+                  "word_wrap": true,
+                  "auto_height": true,
+                  "padding": {
+                    "left": 1.0,
+                    "top": 0.5,
+                    "right": 1.0,
+                    "bottom": 0.5
+                  },
+                  "background": null,
+                  "border": {
+                    "left": true,
+                    "top": true,
+                    "right": true,
+                    "bottom": true,
+                    "width": 0.3
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "ReportFooter",
+          "height": 32.791145,
+          "items": [
+            {
+              "type": "VerticalLayout",
+              "name": "verticalLayout1",
+              "x": 127.62431,
+              "y": 5.7257004,
+              "width": 57.206654,
+              "height": 10.823074,
+              "items": [
+                {
+                  "type": "Text",
+                  "name": "itemText13",
+                  "x": 0.0,
+                  "y": 0.0,
+                  "width": 57.206654,
+                  "height": 5.411537,
+                  "text": "Approved",
+                  "font_size": 10.0,
+                  "font_family": "DejaVu Sans",
+                  "bold": true,
+                  "italic": false,
+                  "text_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0,
+                    "a": 255
+                  },
+                  "horizontal_align": "Right",
+                  "vertical_align": "Center",
+                  "word_wrap": false,
+                  "auto_height": false,
+                  "padding": {
+                    "left": 0.0,
+                    "top": 0.0,
+                    "right": 0.0,
+                    "bottom": 0.0
+                  },
+                  "background": null,
+                  "border": null
+                },
+                {
+                  "type": "Text",
+                  "name": "itemText14",
+                  "x": 0.0,
+                  "y": 5.411537,
+                  "width": 57.206654,
+                  "height": 5.411537,
+                  "text": "${employees.fullName}, ${employees.position}",
+                  "value_type": "Expression",
+                  "query_source": {
+                    "Named": "employees"
+                  },
+                  "font_size": 11.0,
+                  "font_family": "DejaVu Sans",
+                  "bold": false,
+                  "italic": false,
+                  "text_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0,
+                    "a": 255
+                  },
+                  "horizontal_align": "Right",
+                  "vertical_align": "Center",
+                  "word_wrap": false,
+                  "auto_height": false,
+                  "padding": {
+                    "left": 0.0,
+                    "top": 0.0,
+                    "right": 0.0,
+                    "bottom": 0.0
+                  },
+                  "background": null,
+                  "border": null
+                }
+              ]
+            },
+            {
+              "type": "Image",
+              "name": "itemImage2",
+              "x": 128.19087,
+              "y": 12.517953,
+              "width": 50.0,
+              "height": 20.0,
+              "source": "",
+              "source_type": "Database",
+              "query_source": {
+                "Named": "restaurant"
+              },
+              "field": "approved",
+              "fit": "Contain"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

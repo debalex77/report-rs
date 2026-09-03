@@ -44,12 +44,15 @@ pub(crate) fn launch_preview(
     // temporary report path. Packaged release builds use the sibling binary.
     let mut command = if preview_executable.is_file() {
         std::process::Command::new(preview_executable)
-    } else {
+    } else if cfg!(debug_assertions) {
         let mut command = std::process::Command::new("cargo");
         command
             .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."))
             .args(["run", "--quiet", "-p", "report-preview", "--"]);
         command
+    } else {
+        let _ = std::fs::remove_file(&preview_path);
+        return Err("Cannot find report-preview beside Designer. Extract both binaries from the release archive into the same directory.".to_string());
     };
     let started = std::time::Instant::now();
     let child = match command

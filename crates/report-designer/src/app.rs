@@ -20,10 +20,10 @@ use report_core::font::resolver::SystemFontResolver;
 use report_core::image::layout::calculate_image_placement;
 use report_core::model::{
     Band, BandKind, Border, Color as ReportColor, DataConnection, DataQuery, DataSourceDefinition,
-    FilterOperator, HorizontalAlign, ImageFit, ImageItem, Item, LayoutItem, Margins, Mm,
-    Orientation, Padding, Page, PageSize, QueryFilter, QuerySort, QuerySource, RectangleItem,
-    Report, ReportParameter, ReportParameterType, SortDirection, TextItem, ValueFormat, ValueType,
-    VerticalAlign,
+    FilterOperator, HorizontalAlign, ImageFit, ImageItem, ImageSourceType, Item, LayoutItem,
+    Margins, Mm, Orientation, Padding, Page, PageSize, QueryFilter, QuerySort, QuerySource,
+    RectangleItem, Report, ReportParameter, ReportParameterType, SortDirection, TextItem,
+    ValueFormat, ValueType, VerticalAlign,
 };
 
 #[cfg(test)]
@@ -164,6 +164,7 @@ struct ShapeInputs {
 struct BandInputs {
     height: String,
     data_source: String,
+    group_field: String,
 }
 
 struct QueryFieldPicker {
@@ -200,6 +201,7 @@ struct PendingDataFieldDrop {
     columns: Vec<TableColumnSpec>,
     center_table: bool,
     include_row_number: bool,
+    groups: Vec<TableGroupSpec>,
     template_name: String,
 }
 
@@ -207,7 +209,16 @@ impl BandInputs {
     fn sync(&mut self, band: &Band) {
         self.height = format_mm(band.height.0);
         self.data_source = match &band.kind {
-            BandKind::Data { source } | BandKind::DataHeader { source, .. } => source.clone(),
+            BandKind::Data { source }
+            | BandKind::DataHeader { source, .. }
+            | BandKind::GroupHeader { source, .. }
+            | BandKind::GroupFooter { source, .. } => source.clone(),
+            _ => String::new(),
+        };
+        self.group_field = match &band.kind {
+            BandKind::GroupHeader { field, .. } | BandKind::GroupFooter { field, .. } => {
+                field.clone()
+            }
             _ => String::new(),
         };
     }

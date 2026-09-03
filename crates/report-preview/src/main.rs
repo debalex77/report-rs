@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+mod pdf_export;
 use std::path::{Path as FsPath, PathBuf};
 use std::sync::{
     Arc,
@@ -27,7 +28,7 @@ use report_core::model::{BandKind, HorizontalAlign, Report, ReportParameterType,
 
 use report_core::font::measurer::RealFontMeasurer;
 use report_core::image::layout::calculate_image_placement;
-use report_core::image::loader::load_image;
+use report_core::image::loader::{load_image, load_image_bytes};
 use report_core::layout::text::pt_to_mm;
 
 const PX_PER_MM: f32 = 96.0 / 25.4;
@@ -97,6 +98,7 @@ struct PreviewApp {
     processing: bool,
     processing_timing: Option<RenderTiming>,
     exporting_pdf: bool,
+    last_pdf_path: Option<PathBuf>,
     export_duration: Option<std::time::Duration>,
     progress: f32,
     render_progress: Arc<AtomicU8>,
@@ -110,12 +112,12 @@ fn load_preview_images(
 ) -> HashMap<String, PreviewImage> {
     let mut images = HashMap::new();
 
-    for source in pages
+    for (source, data) in pages
         .iter()
         .flat_map(|page| &page.items)
         .filter_map(|item| {
-            if let RenderedItem::Image { source, .. } = item {
-                Some(source)
+            if let RenderedItem::Image { source, data, .. } = item {
+                Some((source, data.as_deref()))
             } else {
                 None
             }
@@ -125,14 +127,19 @@ fn load_preview_images(
             continue;
         }
 
-        let source_path = PathBuf::from(source);
-        let resolved_path = if source_path.is_absolute() {
-            source_path
+        let loaded = if let Some(data) = data {
+            load_image_bytes(data, source)
         } else {
-            report_dir.join(source_path)
+            let source_path = PathBuf::from(source);
+            let resolved_path = if source_path.is_absolute() {
+                source_path
+            } else {
+                report_dir.join(source_path)
+            };
+            load_image(&resolved_path)
         };
 
-        match load_image(&resolved_path) {
+        match loaded {
             Ok(image) => {
                 let width = image.width;
                 let height = image.height;
@@ -157,11 +164,17 @@ fn load_preview_images(
 impl PreviewApp {
     fn boot() -> (Self, Task<Message>) {
         let path = std::env::args().nth(1).unwrap_or_else(|| {
-            concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/../../examples/simple.report.json"
-            )
-            .to_string()
+            let bundled = std::env::current_exe()
+                .ok()
+                .and_then(|exe| {
+                    exe.parent()
+                        .map(|dir| dir.join("examples/simple.report.json"))
+                })
+                .filter(|path| path.is_file());
+            bundled
+                .unwrap_or_else(|| PathBuf::from("examples/simple.report.json"))
+                .to_string_lossy()
+                .into_owned()
         });
 
         let report = Report::from_file(&path).expect("Cannot load report");
@@ -192,6 +205,7 @@ impl PreviewApp {
             processing: !parameters_pending,
             processing_timing: None,
             exporting_pdf: false,
+            last_pdf_path: None,
             export_duration: None,
             progress: 0.0,
             render_progress: Arc::new(AtomicU8::new(0)),
@@ -231,7 +245,7 @@ enum Message {
     ZoomReset,
     ToggleDebug,
     ExportPdf,
-    PdfExported(Result<std::time::Duration, String>),
+    PdfExported(Result<Option<(PathBuf, std::time::Duration)>, String>),
     OpenPdf,
     DismissError,
     ParameterChanged(usize, String),
@@ -675,6 +689,7 @@ impl<'a, Message> canvas::Program<Message> for PageCanvas<'a> {
                     width,
                     height,
                     source,
+                    data: _,
                     fit,
                 } => {
                     if let Some(image) = self.images.get(source) {
@@ -763,6 +778,10 @@ impl PreviewApp {
                 let pages = self.pages.clone();
                 let report_dir = self.report_dir.clone();
                 let exported_pages = Arc::clone(&self.exported_pages);
+                let default_path = self
+                    .last_pdf_path
+                    .clone()
+                    .unwrap_or_else(|| report_dir.join("output.pdf"));
                 self.exporting_pdf = true;
                 self.export_duration = None;
                 self.progress = 0.0;
@@ -770,15 +789,18 @@ impl PreviewApp {
                 self.error_message = None;
                 return Task::perform(
                     async move {
+                        let Some(output_path) = pdf_export::choose_destination(&default_path)?
+                        else {
+                            return Ok(None);
+                        };
                         let started = std::time::Instant::now();
-                        let output_path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../output.pdf");
                         report_pdf::PdfRenderer::render_to_file_with_base_dir_and_progress(
                             &pages,
-                            output_path,
+                            &output_path,
                             &report_dir,
                             |completed, _| exported_pages.store(completed, Ordering::Relaxed),
                         )
-                        .map(|()| started.elapsed())
+                        .map(|()| Some((output_path, started.elapsed())))
                         .map_err(|error| format!("Cannot create PDF: {error:?}"))
                     },
                     Message::PdfExported,
@@ -787,29 +809,24 @@ impl PreviewApp {
             Message::PdfExported(result) => {
                 self.exporting_pdf = false;
                 match result {
-                    Ok(duration) => {
+                    Ok(Some((output_path, duration))) => {
                         self.export_duration = Some(duration);
-                        let output_path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../output.pdf");
-                        println!("PDF created: {output_path}");
-                        if let Err(error) = std::process::Command::new("xdg-open")
-                            .arg(output_path)
-                            .spawn()
-                        {
-                            self.error_message = Some(format!("Cannot open PDF: {error}"));
+                        println!("PDF created: {}", output_path.display());
+                        self.last_pdf_path = Some(output_path.clone());
+                        if let Err(error) = pdf_export::open_pdf(&output_path) {
+                            self.error_message = Some(error);
                         }
                     }
+                    Ok(None) => {}
                     Err(error) => self.error_message = Some(error),
                 }
             }
 
             Message::OpenPdf => {
-                let output_path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../output.pdf");
-
-                if let Err(error) = std::process::Command::new("xdg-open")
-                    .arg(output_path)
-                    .spawn()
+                if let Some(path) = &self.last_pdf_path
+                    && let Err(error) = pdf_export::open_pdf(path)
                 {
-                    eprintln!("Cannot open PDF: {error}");
+                    self.error_message = Some(error);
                 }
             }
 
@@ -1051,7 +1068,10 @@ impl PreviewApp {
                 ),
             button("Open PDF")
                 .style(common::style_button(6.0))
-                .on_press(Message::OpenPdf),
+                .on_press_maybe(
+                    (self.last_pdf_path.is_some() && !self.exporting_pdf)
+                        .then_some(Message::OpenPdf)
+                ),
             if self.report.parameters.is_empty() {
                 Element::<Message>::from(Space::new().width(0))
             } else {
@@ -1221,19 +1241,19 @@ fn main() -> iced::Result {
         return Ok(());
     }
 
-    let font_bytes = std::fs::read("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
-        .expect("Cannot load DejaVuSans.ttf");
-
-    iced::application(PreviewApp::boot, PreviewApp::update, PreviewApp::view)
-        .title("report-rs Preview")
-        .font(font_bytes)
-        .subscription(|app| {
-            if app.processing || app.exporting_pdf {
-                iced::time::every(std::time::Duration::from_millis(80))
-                    .map(|_| Message::ProcessingTick)
-            } else {
-                iced::Subscription::none()
-            }
-        })
-        .run()
+    let app = iced::application(PreviewApp::boot, PreviewApp::update, PreviewApp::view)
+        .title("report-rs Preview");
+    // Use system font fallback when this distribution-specific path is absent.
+    let app = match std::fs::read("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf") {
+        Ok(bytes) => app.font(bytes),
+        Err(_) => app,
+    };
+    app.subscription(|app| {
+        if app.processing || app.exporting_pdf {
+            iced::time::every(std::time::Duration::from_millis(80)).map(|_| Message::ProcessingTick)
+        } else {
+            iced::Subscription::none()
+        }
+    })
+    .run()
 }

@@ -4,7 +4,7 @@ use printpdf::{
 };
 
 use report_core::image::layout::calculate_image_placement;
-use report_core::image::loader::{ImageLoadError, load_image};
+use report_core::image::loader::{ImageLoadError, load_image, load_image_bytes};
 use report_core::layout::{RenderedItem, RenderedPage};
 
 use report_core::layout::text::{mm_to_pt, pt_to_mm};
@@ -516,19 +516,24 @@ impl PdfRenderer {
                         width,
                         height,
                         source,
+                        data,
                         fit,
                     } => {
                         let (image_id, pixel_width, pixel_height) =
                             if let Some(image) = image_cache.get(source) {
                                 image.clone()
                             } else {
-                                let source_path = Path::new(source);
-                                let resolved_path = if source_path.is_absolute() {
-                                    source_path.to_path_buf()
+                                let image = if let Some(data) = data {
+                                    load_image_bytes(data, source)?
                                 } else {
-                                    base_dir.join(source_path)
+                                    let source_path = Path::new(source);
+                                    let resolved_path = if source_path.is_absolute() {
+                                        source_path.to_path_buf()
+                                    } else {
+                                        base_dir.join(source_path)
+                                    };
+                                    load_image(resolved_path)?
                                 };
-                                let image = load_image(resolved_path)?;
                                 let pixel_width = image.width;
                                 let pixel_height = image.height;
                                 let raw_image = RawImage {

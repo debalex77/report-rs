@@ -150,12 +150,16 @@ impl DesignerApp {
         dialog_container(
             column![
                 row![
-                    text(concat!(
-                        "Designer (report-rs v",
-                        env!("CARGO_PKG_VERSION"),
-                        ")"
+                    iced::widget::image(iced::widget::image::Handle::from_bytes(
+                        include_bytes!("../../../assets/report-rs-logo.png").as_slice(),
                     ))
-                    .size(20),
+                    .width(58)
+                    .height(58),
+                    column![
+                        text("report-rs Designer").size(22),
+                        text(concat!("Version ", env!("CARGO_PKG_VERSION"))).size(12),
+                    ]
+                    .spacing(3),
                     Space::new().width(Fill),
                     button(container(text("×").size(14)).center(Fill))
                         .width(28)
@@ -165,14 +169,26 @@ impl DesignerApp {
                         .on_press(Message::CloseAbout),
                 ]
                 .align_y(iced::Alignment::Center),
-                text("Visual designer for creating and editing JSON report templates.").size(13),
-                button(text("Close").size(13))
-                    .style(button::primary)
-                    .on_press(Message::CloseAbout),
+                rule::horizontal(1),
+                text("Visual report designer, preview and PDF generator written in Rust.").size(13),
+                text("Band-based reports · SQLite · Parameters · Functions · Groups · Images")
+                    .size(12),
+                text("https://github.com/debalex77/report-rs").size(11),
+                row![
+                    text("MIT License · Copyright © 2026 debalex77").size(11),
+                    Space::new().width(Fill),
+                    button(container(text("Close").size(13)).center(Fill))
+                        .width(82)
+                        .height(30)
+                        .padding(0)
+                        .style(button::primary)
+                        .on_press(Message::CloseAbout),
+                ]
+                .align_y(iced::Alignment::Center),
             ]
             .spacing(12)
             .padding(18),
-            430.0,
+            540.0,
         )
     }
 
@@ -393,6 +409,16 @@ impl DesignerApp {
                 include_bytes!("../../../assets/report-band-symbolic.svg"),
                 "DataBand",
                 DesignerTool::DataBand,
+            ),
+            toolbox_button(
+                include_bytes!("../../../assets/report-band-symbolic.svg"),
+                "GroupHeader",
+                DesignerTool::GroupHeader,
+            ),
+            toolbox_button(
+                include_bytes!("../../../assets/report-band-symbolic.svg"),
+                "GroupFooter",
+                DesignerTool::GroupFooter,
             ),
             toolbox_button(
                 include_bytes!("../../../assets/report-band-symbolic.svg"),

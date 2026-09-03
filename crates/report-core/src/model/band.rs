@@ -26,6 +26,15 @@ pub enum BandKind {
         #[serde(default = "default_true")]
         repeat_on_each_page: bool,
     },
+    /// Printed when the value of `field` changes in the associated data source.
+    GroupHeader {
+        source: String,
+        field: String,
+        #[serde(default)]
+        repeat_on_each_page: bool,
+    },
+    /// Printed after the last row of each group in the associated data source.
+    GroupFooter { source: String, field: String },
     /// Repeated at the bottom of every physical page.
     PageFooter,
     /// Rendered once after the report content.

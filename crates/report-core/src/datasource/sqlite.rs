@@ -74,6 +74,29 @@ mod tests {
     }
 
     #[test]
+    fn sqlite_query_preserves_blob_bytes() {
+        let path = database_path();
+        let connection = Connection::open(&path).unwrap();
+        connection
+            .execute("CREATE TABLE images (content BLOB)", [])
+            .unwrap();
+        connection
+            .execute("INSERT INTO images VALUES (?1)", [vec![1_u8, 2, 3, 4]])
+            .unwrap();
+        drop(connection);
+        let provider = SqliteDataProvider::open("main", &path).unwrap();
+
+        let rows = provider
+            .query("main", "images", "SELECT content FROM images")
+            .unwrap();
+
+        assert!(
+            matches!(rows[0].get("content"), Some(Value::Blob(value)) if value == &[1, 2, 3, 4])
+        );
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
     fn sqlite_provider_does_not_create_missing_database() {
         let path = database_path();
 
@@ -152,7 +175,7 @@ impl DataProvider for SqliteDataProvider {
     fn query(
         &self,
         source: &str,
-        query_name: &str,
+        _query_name: &str,
         sql: &str,
     ) -> Result<Vec<Row>, DataSourceError> {
         let mut statement =
@@ -192,13 +215,7 @@ impl DataProvider for SqliteDataProvider {
                     ValueRef::Text(value) => {
                         Value::String(String::from_utf8_lossy(value).into_owned())
                     }
-                    ValueRef::Blob(_) => {
-                        return Err(DataSourceError::UnsupportedBlob {
-                            data_source: source.to_string(),
-                            query: query_name.to_string(),
-                            column: column.clone(),
-                        });
-                    }
+                    ValueRef::Blob(value) => Value::Blob(value.to_vec()),
                 };
                 values.insert(column.clone(), value);
             }
@@ -210,7 +227,7 @@ impl DataProvider for SqliteDataProvider {
     fn query_with_parameters(
         &self,
         source: &str,
-        query_name: &str,
+        _query_name: &str,
         sql: &str,
         parameters: &HashMap<String, Value>,
     ) -> Result<Vec<Row>, DataSourceError> {
@@ -233,6 +250,7 @@ impl DataProvider for SqliteDataProvider {
                 Value::String(value) => SqlValue::Text(value.clone()),
                 Value::Number(value) => SqlValue::Real(*value),
                 Value::Bool(value) => SqlValue::Integer(i64::from(*value)),
+                Value::Blob(value) => SqlValue::Blob(value.clone()),
                 Value::Null => SqlValue::Null,
             };
             statement
@@ -267,13 +285,7 @@ impl DataProvider for SqliteDataProvider {
                     ValueRef::Text(value) => {
                         Value::String(String::from_utf8_lossy(value).into_owned())
                     }
-                    ValueRef::Blob(_) => {
-                        return Err(DataSourceError::UnsupportedBlob {
-                            data_source: source.to_string(),
-                            query: query_name.to_string(),
-                            column: column.clone(),
-                        });
-                    }
+                    ValueRef::Blob(value) => Value::Blob(value.to_vec()),
                 };
                 values.insert(column.clone(), value);
             }

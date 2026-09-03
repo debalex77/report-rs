@@ -1,6 +1,7 @@
 use crate::datasource::{ReportContext, Row, Value};
 use crate::model::{ValueFormat, ValueType};
 use chrono::{NaiveDate, NaiveDateTime};
+use std::borrow::Cow;
 
 /// Resolves `${...}` references in a report text expression.
 ///
@@ -35,7 +36,7 @@ pub fn evaluate_for_query(
             return result;
         };
         let reference = &expression[..end];
-        if let Some(value) = resolve_reference(reference, row, context, current_query) {
+        if let Some(value) = resolve_value(reference, row, context, current_query) {
             result.push_str(&value.as_string());
         } else {
             result.push_str("${");
@@ -63,12 +64,13 @@ pub fn evaluate_formatted_for_query(
         .strip_prefix("${")
         .and_then(|reference| reference.strip_suffix('}'))
         .filter(|reference| !reference.contains("${"))
-        .and_then(|reference| resolve_reference(reference, row, context, current_query));
+        .and_then(|reference| resolve_value(reference, row, context, current_query));
 
     let raw = value
+        .as_deref()
         .map(Value::as_string)
         .unwrap_or_else(|| evaluate_for_query(template, row, context, current_query));
-    format_value(value, &raw, value_type, format)
+    format_value(value.as_deref(), &raw, value_type, format)
 }
 
 fn format_value(
@@ -173,14 +175,18 @@ fn format_date(raw: &str, value_type: ValueType, format: &ValueFormat) -> Option
     }
 }
 
-fn resolve_reference<'a>(
+fn resolve_value<'a>(
     reference: &str,
     row: Option<&'a Row>,
     context: &'a ReportContext,
     current_query: Option<&str>,
-) -> Option<&'a Value> {
+) -> Option<Cow<'a, Value>> {
+    if let Some(value) = resolve_aggregate(reference, context, current_query) {
+        return Some(Cow::Owned(value));
+    }
+
     if let Some(parameter) = reference.strip_prefix("parameter.") {
-        return context.parameter(parameter);
+        return context.parameter(parameter).map(Cow::Borrowed);
     }
 
     if let Some((query, field)) = reference.split_once('.') {
@@ -188,13 +194,79 @@ fn resolve_reference<'a>(
             return None;
         }
         if current_query == Some(query) {
-            return row?.get(field);
+            return row?.get(field).map(Cow::Borrowed);
         }
-        return context.table(query)?.first()?.get(field);
+        return context.table(query)?.first()?.get(field).map(Cow::Borrowed);
     }
 
     row.and_then(|row| row.get(reference))
         .or_else(|| context.variable(reference))
+        .map(Cow::Borrowed)
+}
+
+fn resolve_aggregate(
+    reference: &str,
+    context: &ReportContext,
+    current_query: Option<&str>,
+) -> Option<Value> {
+    let (function, argument) = reference.split_once('(')?;
+    let argument = argument.strip_suffix(')')?.trim();
+    if argument.contains('(') || argument.contains(')') {
+        return None;
+    }
+
+    if matches!(function.trim(), "count" | "row_count") {
+        let query = if argument.is_empty() {
+            current_query?
+        } else {
+            argument
+        };
+        return Some(Value::Number(context.table(query)?.len() as f64));
+    }
+
+    let (query, field) = argument
+        .split_once('.')
+        .or_else(|| current_query.map(|query| (query, argument)))?;
+    if query.is_empty() || field.is_empty() || field.contains('.') {
+        return None;
+    }
+    let values = context.table(query)?.iter().filter_map(|row| {
+        row.get(field).and_then(|value| match value {
+            Value::Number(value) => Some(*value),
+            Value::String(value) => value.parse::<f64>().ok(),
+            Value::Bool(_) | Value::Blob(_) | Value::Null => None,
+        })
+    });
+    let value = match function.trim() {
+        "sum" => normalize_floating_result(values.sum::<f64>()),
+        "average" | "avg" => {
+            let values = values.collect::<Vec<_>>();
+            if values.is_empty() {
+                return Some(Value::Null);
+            }
+            normalize_floating_result(values.iter().sum::<f64>() / values.len() as f64)
+        }
+        "min" => values.reduce(f64::min)?,
+        "max" => values.reduce(f64::max)?,
+        _ => return None,
+    };
+    Some(Value::Number(value))
+}
+
+/// Removes the tiny binary floating-point residue commonly produced by sums
+/// such as `5.5 + 8.95`, while preserving genuinely high-precision values.
+fn normalize_floating_result(value: f64) -> f64 {
+    if !value.is_finite() {
+        return value;
+    }
+    let scale = 1_000_000_000_000.0_f64;
+    let rounded = (value * scale).round() / scale;
+    let tolerance = f64::EPSILON * value.abs().max(1.0) * 16.0;
+    if (value - rounded).abs() <= tolerance {
+        rounded
+    } else {
+        value
+    }
 }
 
 #[cfg(test)]
@@ -261,6 +333,55 @@ mod tests {
             evaluate("${parameter.subtitle} / ${page}", None, &context),
             "August / 2"
         );
+    }
+
+    #[test]
+    fn resolves_query_aggregate_functions() {
+        let mut first = Row::new();
+        first.insert("amount".into(), Value::Number(10.0));
+        let mut second = Row::new();
+        second.insert("amount".into(), Value::String("20.5".into()));
+        let mut third = Row::new();
+        third.insert("amount".into(), Value::Null);
+        let mut context = ReportContext::new();
+        context.add_table("Sales", vec![first, second, third]);
+
+        assert_eq!(
+            evaluate(
+                "${count(Sales)}|${sum(Sales.amount)}|${average(Sales.amount)}|${min(Sales.amount)}|${max(Sales.amount)}",
+                None,
+                &context,
+            ),
+            "3|30.5|15.25|10|20.5"
+        );
+    }
+
+    #[test]
+    fn aggregate_can_use_the_current_query() {
+        let mut first = Row::new();
+        first.insert("amount".into(), Value::Number(4.0));
+        let mut second = Row::new();
+        second.insert("amount".into(), Value::Number(6.0));
+        let mut context = ReportContext::new();
+        context.add_table("Sales", vec![first, second]);
+
+        assert_eq!(
+            evaluate_for_query("${count()} / ${sum(amount)}", None, &context, Some("Sales")),
+            "2 / 10"
+        );
+    }
+
+    #[test]
+    fn aggregate_sum_hides_binary_floating_point_residue() {
+        let mut first = Row::new();
+        first.insert("price".into(), Value::Number(5.5));
+        let mut second = Row::new();
+        second.insert("price".into(), Value::Number(8.95));
+        let mut context = ReportContext::new();
+        context.add_table("products", vec![first, second]);
+
+        assert_eq!(evaluate("${sum(products.price)}", None, &context), "14.45");
+        assert_eq!(normalize_floating_result(1.0 / 3.0), 1.0 / 3.0);
     }
 
     #[test]

@@ -4,3 +4,4 @@ output.pdf
 *.pdf
 .agent/
 .codex/
+.report-rs-preview-*

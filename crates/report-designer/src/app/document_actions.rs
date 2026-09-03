@@ -70,6 +70,42 @@ impl DesignerApp {
                     .map(|query| query.name.clone())
                     .unwrap_or_default(),
             }),
+            DesignerTool::GroupHeader | DesignerTool::GroupFooter => {
+                let source = self
+                    .report
+                    .pages
+                    .first()
+                    .and_then(|page| {
+                        page.bands.iter().find_map(|band| match &band.kind {
+                            BandKind::Data { source } => Some(source.clone()),
+                            _ => None,
+                        })
+                    })
+                    .or_else(|| {
+                        self.report
+                            .data_sources
+                            .iter()
+                            .flat_map(|source| &source.queries)
+                            .next()
+                            .map(|query| query.name.clone())
+                    })
+                    .unwrap_or_default();
+                self.load_function_query_fields();
+                let field = self
+                    .query_fields
+                    .get(&source)
+                    .and_then(|fields| fields.first())
+                    .cloned()
+                    .unwrap_or_default();
+                self.add_band(match tool {
+                    DesignerTool::GroupHeader => BandKind::GroupHeader {
+                        source,
+                        field,
+                        repeat_on_each_page: false,
+                    },
+                    _ => BandKind::GroupFooter { source, field },
+                });
+            }
             DesignerTool::ReportFooter => self.add_band(BandKind::ReportFooter),
             DesignerTool::Text => {
                 let font_family = self

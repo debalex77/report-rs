@@ -14,6 +14,13 @@ pub(crate) struct TableColumnSpec {
     pub(crate) grouping: bool,
 }
 
+#[derive(Clone)]
+pub(crate) struct TableGroupSpec {
+    pub(crate) field: String,
+    pub(crate) include_header: bool,
+    pub(crate) include_footer: bool,
+}
+
 pub(crate) fn create_query_table(
     report: &mut Report,
     target_band: usize,
@@ -21,10 +28,29 @@ pub(crate) fn create_query_table(
     columns: &[TableColumnSpec],
     include_header: bool,
     center_table: bool,
+    groups: &[TableGroupSpec],
     font_family: String,
 ) -> Result<(), String> {
     if columns.is_empty() {
         return Err("Select at least one query field".to_string());
+    }
+    for group in groups {
+        if !columns.iter().any(|column| column.field == group.field) {
+            return Err(format!(
+                "The group field '{}' is not part of the table",
+                group.field
+            ));
+        }
+    }
+    let mut unique_groups = std::collections::HashSet::new();
+    if let Some(duplicate) = groups
+        .iter()
+        .map(|group| group.field.as_str())
+        .find(|field| !unique_groups.insert(*field))
+    {
+        return Err(format!(
+            "The group field '{duplicate}' is selected more than once"
+        ));
     }
     let page = report
         .pages
@@ -140,8 +166,182 @@ pub(crate) fn create_query_table(
     page.bands[data_index].height = Mm(8.0);
     page.bands[data_index].items =
         vec![table_layout(columns, &widths, &font_family, false, table_x)];
+
+    if !groups.is_empty() {
+        let header_index = page.bands.iter().position(|band| {
+            matches!(
+                &band.kind,
+                BandKind::DataHeader { source, .. } if source == query
+            )
+        });
+        let mut insert_header_at = header_index.unwrap_or(data_index);
+        for group in groups {
+            page.bands.insert(
+                insert_header_at,
+                group_header_band(
+                    query,
+                    &group.field,
+                    total_width,
+                    table_x,
+                    &font_family,
+                    group.include_header,
+                ),
+            );
+            insert_header_at += 1;
+            data_index += 1;
+        }
+        for group in groups {
+            if !group.include_footer {
+                continue;
+            }
+            page.bands.insert(
+                data_index + 1,
+                group_footer_band(query, &group.field, columns, &widths, table_x, &font_family),
+            );
+        }
+    }
+    if !groups.is_empty()
+        && let Some(data_query) = report
+            .data_sources
+            .iter_mut()
+            .flat_map(|source| &mut source.queries)
+            .find(|candidate| candidate.name == query)
+    {
+        let group_fields = groups
+            .iter()
+            .map(|group| group.field.as_str())
+            .collect::<std::collections::HashSet<_>>();
+        let mut sorts = groups
+            .iter()
+            .map(|group| QuerySort {
+                field: group.field.clone(),
+                direction: SortDirection::Ascending,
+            })
+            .collect::<Vec<_>>();
+        sorts.extend(
+            std::mem::take(&mut data_query.sorts)
+                .into_iter()
+                .filter(|sort| !group_fields.contains(sort.field.as_str())),
+        );
+        data_query.sorts = sorts;
+    }
     ensure_unique_item_names(report);
     Ok(())
+}
+
+fn group_header_band(
+    query: &str,
+    field: &str,
+    width: f32,
+    x: f32,
+    font_family: &str,
+    visible: bool,
+) -> Band {
+    let mut item = new_text_item(font_family.to_string());
+    let Item::Text(text) = &mut item else {
+        unreachable!();
+    };
+    text.x = Mm(x);
+    text.y = Mm(0.0);
+    text.width = Mm(width);
+    text.height = Mm(8.0);
+    text.text = format!("{field}: ${{{field}}}");
+    text.value_type = ValueType::Expression;
+    text.bold = true;
+    text.vertical_align = VerticalAlign::Center;
+    text.padding = Padding {
+        left: Mm(2.0),
+        top: Mm(0.5),
+        right: Mm(1.0),
+        bottom: Mm(0.5),
+    };
+    text.background = Some(ReportColor::rgb(205, 220, 238));
+    Band {
+        kind: BandKind::GroupHeader {
+            source: query.to_string(),
+            field: field.to_string(),
+            repeat_on_each_page: true,
+        },
+        height: Mm(if visible { 8.0 } else { 0.0 }),
+        items: if visible { vec![item] } else { Vec::new() },
+    }
+}
+
+fn group_footer_band(
+    query: &str,
+    field: &str,
+    columns: &[TableColumnSpec],
+    widths: &[f32],
+    x: f32,
+    font_family: &str,
+) -> Band {
+    let mut cell_x = 0.0;
+    let mut label_written = false;
+    let items = columns
+        .iter()
+        .zip(widths)
+        .map(|(column, &width)| {
+            let mut item = new_text_item(font_family.to_string());
+            let Item::Text(text) = &mut item else {
+                unreachable!();
+            };
+            text.x = Mm(cell_x);
+            text.y = Mm(0.0);
+            text.width = Mm(width);
+            text.height = Mm(8.0);
+            cell_x += width;
+            if matches!(column.value_type, ValueType::Integer | ValueType::Double)
+                && column.field != "row_number"
+            {
+                text.text = format!("${{sum({query}.{})}}", column.field);
+                text.value_type = ValueType::Function;
+                text.value_format = ValueFormat {
+                    decimal_places: parse_decimal_places(&column.decimal_places).flatten(),
+                    date_pattern: None,
+                    prefix: column.prefix.clone(),
+                    suffix: column.suffix.clone(),
+                    grouping: column.grouping,
+                };
+                text.horizontal_align = HorizontalAlign::Right;
+            } else if !label_written {
+                text.text = format!("Subtotal (${{count({query})}} rows)");
+                text.value_type = ValueType::Function;
+                text.bold = true;
+                label_written = true;
+            }
+            text.vertical_align = VerticalAlign::Center;
+            text.padding = Padding {
+                left: Mm(1.0),
+                top: Mm(0.5),
+                right: Mm(1.0),
+                bottom: Mm(0.5),
+            };
+            text.background = Some(ReportColor::rgb(235, 239, 245));
+            text.border = Some(Border {
+                left: true,
+                top: true,
+                right: true,
+                bottom: true,
+                width: 0.3,
+            });
+            item
+        })
+        .collect();
+    Band {
+        kind: BandKind::GroupFooter {
+            source: query.to_string(),
+            field: field.to_string(),
+        },
+        height: Mm(8.0),
+        items: vec![Item::HorizontalLayout(LayoutItem {
+            name: String::new(),
+            x: Mm(x),
+            y: Mm(0.0),
+            width: Mm(widths.iter().sum()),
+            height: Mm(8.0),
+            items,
+        })],
+    }
 }
 
 fn table_layout(
@@ -266,6 +466,7 @@ mod tests {
             &fields,
             true,
             true,
+            &[],
             "Sans".into(),
         )
         .unwrap();
@@ -328,10 +529,116 @@ mod tests {
             &columns(&["name"]),
             false,
             false,
+            &[],
             "Sans".into(),
         )
         .unwrap_err();
 
         assert_eq!(error, "The target DataBand must be empty");
+    }
+
+    #[test]
+    fn creates_group_header_and_numeric_subtotals() {
+        let mut report = report_with_data_band();
+        let mut fields = columns(&["category_id", "name", "price"]);
+        fields[0].value_type = ValueType::Integer;
+        fields[2].value_type = ValueType::Double;
+        fields[2].decimal_places = "2".into();
+        fields[2].suffix = " MDL".into();
+
+        create_query_table(
+            &mut report,
+            0,
+            "products",
+            &fields,
+            true,
+            true,
+            &[TableGroupSpec {
+                field: "category_id".into(),
+                include_header: true,
+                include_footer: true,
+            }],
+            "Sans".into(),
+        )
+        .unwrap();
+
+        let bands = &report.pages[0].bands;
+        assert_eq!(bands.len(), 4);
+        assert!(matches!(
+            &bands[0].kind,
+            BandKind::GroupHeader { source, field, .. }
+                if source == "products" && field == "category_id"
+        ));
+        assert!(matches!(bands[1].kind, BandKind::DataHeader { .. }));
+        assert!(matches!(bands[2].kind, BandKind::Data { .. }));
+        assert!(matches!(
+            &bands[3].kind,
+            BandKind::GroupFooter { source, field }
+                if source == "products" && field == "category_id"
+        ));
+        let Item::HorizontalLayout(footer) = &bands[3].items[0] else {
+            panic!("expected footer layout");
+        };
+        let Item::Text(price) = &footer.items[2] else {
+            panic!("expected price subtotal");
+        };
+        assert_eq!(price.text, "${sum(products.price)}");
+        assert_eq!(price.value_type, ValueType::Function);
+        assert_eq!(price.value_format.decimal_places, Some(2));
+        assert_eq!(price.value_format.suffix, " MDL");
+    }
+
+    #[test]
+    fn creates_nested_groups_in_open_and_close_order() {
+        let mut report = report_with_data_band();
+        let fields = columns(&["category_id", "available", "name"]);
+        let groups = [
+            TableGroupSpec {
+                field: "category_id".into(),
+                include_header: true,
+                include_footer: true,
+            },
+            TableGroupSpec {
+                field: "available".into(),
+                include_header: true,
+                include_footer: true,
+            },
+        ];
+
+        create_query_table(
+            &mut report,
+            0,
+            "products",
+            &fields,
+            true,
+            false,
+            &groups,
+            "Sans".into(),
+        )
+        .unwrap();
+
+        let fields = report.pages[0]
+            .bands
+            .iter()
+            .filter_map(|band| match &band.kind {
+                BandKind::GroupHeader { field, .. } => Some(format!("H:{field}")),
+                BandKind::DataHeader { .. } => Some("DH".into()),
+                BandKind::Data { .. } => Some("D".into()),
+                BandKind::GroupFooter { field, .. } => Some(format!("F:{field}")),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            fields,
+            [
+                "H:category_id",
+                "H:available",
+                "DH",
+                "D",
+                "F:available",
+                "F:category_id"
+            ]
+        );
     }
 }

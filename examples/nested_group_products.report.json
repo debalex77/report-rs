@@ -1,0 +1,499 @@
+{
+  "name": "Products with nested groups",
+  "data_sources": [
+    {
+      "name": "main",
+      "connection": {
+        "type": "sqlite",
+        "path": "test.sqlite3"
+      },
+      "queries": [
+        {
+          "name": "products",
+          "sql": "SELECT pr.id, pr.category_id, ct.name AS categorie, pr.available, pr.name, pr.unit, pr.price FROM products pr INNER JOIN categories ct ON ct.id = pr.category_id ORDER BY pr.category_id, pr.available, pr.name;"
+        }
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "size": "A4",
+      "orientation": "Portrait",
+      "margins": {
+        "left": 10.0,
+        "top": 10.0,
+        "right": 10.0,
+        "bottom": 10.0
+      },
+      "bands": [
+        {
+          "kind": "ReportHeader",
+          "height": 16.0,
+          "items": [
+            {
+              "type": "Text",
+              "name": "reportTitle",
+              "x": 0.0,
+              "y": 1.0,
+              "width": 190.0,
+              "height": 12.0,
+              "text": "PRODUCTS — NESTED GROUPS",
+              "font_size": 18.0,
+              "font_family": "DejaVu Sans",
+              "bold": true,
+              "italic": false,
+              "text_color": {
+                "r": 31,
+                "g": 55,
+                "b": 83,
+                "a": 255
+              },
+              "horizontal_align": "Center",
+              "vertical_align": "Center",
+              "word_wrap": false,
+              "auto_height": false,
+              "padding": {
+                "left": 1.0,
+                "top": 1.0,
+                "right": 1.0,
+                "bottom": 1.0
+              },
+              "background": null,
+              "border": {
+                "left": false,
+                "top": false,
+                "right": false,
+                "bottom": true,
+                "width": 0.6
+              }
+            }
+          ]
+        },
+        {
+          "kind": {
+            "GroupHeader": {
+              "source": "products",
+              "field": "category_id",
+              "repeat_on_each_page": true
+            }
+          },
+          "height": 9.0,
+          "items": [
+            {
+              "type": "Text",
+              "name": "categoryHeader",
+              "x": 0.0,
+              "y": 1.0,
+              "width": 190.0,
+              "height": 8.0,
+              "text": "CATEGORY ${category_id}: ${categorie}",
+              "value_type": "Expression",
+              "font_size": 13.0,
+              "font_family": "DejaVu Sans",
+              "bold": true,
+              "italic": false,
+              "text_color": {
+                "r": 255,
+                "g": 255,
+                "b": 255,
+                "a": 255
+              },
+              "horizontal_align": "Left",
+              "vertical_align": "Center",
+              "word_wrap": false,
+              "auto_height": false,
+              "padding": {
+                "left": 3.0,
+                "top": 0.5,
+                "right": 1.0,
+                "bottom": 0.5
+              },
+              "background": {
+                "r": 42,
+                "g": 82,
+                "b": 125,
+                "a": 255
+              },
+              "border": null
+            }
+          ]
+        },
+        {
+          "kind": {
+            "GroupHeader": {
+              "source": "products",
+              "field": "available",
+              "repeat_on_each_page": true
+            }
+          },
+          "height": 15.0,
+          "items": [
+            {
+              "type": "Text",
+              "name": "availabilityHeader",
+              "x": 5.0,
+              "y": 1.0,
+              "width": 185.0,
+              "height": 7.0,
+              "text": "Availability group: ${available}",
+              "value_type": "Expression",
+              "font_size": 11.0,
+              "font_family": "DejaVu Sans",
+              "bold": true,
+              "italic": false,
+              "text_color": {
+                "r": 31,
+                "g": 55,
+                "b": 83,
+                "a": 255
+              },
+              "horizontal_align": "Left",
+              "vertical_align": "Center",
+              "word_wrap": false,
+              "auto_height": false,
+              "padding": {
+                "left": 2.0,
+                "top": 0.5,
+                "right": 1.0,
+                "bottom": 0.5
+              },
+              "background": {
+                "r": 218,
+                "g": 231,
+                "b": 245,
+                "a": 255
+              },
+              "border": null
+            },
+            {
+              "type": "Text",
+              "name": "columnName",
+              "x": 5.0,
+              "y": 8.0,
+              "width": 125.0,
+              "height": 7.0,
+              "text": "Product",
+              "font_size": 10.0,
+              "font_family": "DejaVu Sans",
+              "bold": true,
+              "italic": false,
+              "text_color": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 255
+              },
+              "horizontal_align": "Left",
+              "vertical_align": "Center",
+              "word_wrap": false,
+              "auto_height": false,
+              "padding": {
+                "left": 2.0,
+                "top": 0.5,
+                "right": 1.0,
+                "bottom": 0.5
+              },
+              "background": {
+                "r": 239,
+                "g": 243,
+                "b": 247,
+                "a": 255
+              },
+              "border": {
+                "left": true,
+                "top": true,
+                "right": true,
+                "bottom": true,
+                "width": 0.3
+              }
+            },
+            {
+              "type": "Text",
+              "name": "columnPrice",
+              "x": 130.0,
+              "y": 8.0,
+              "width": 60.0,
+              "height": 7.0,
+              "text": "Price",
+              "font_size": 10.0,
+              "font_family": "DejaVu Sans",
+              "bold": true,
+              "italic": false,
+              "text_color": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 255
+              },
+              "horizontal_align": "Right",
+              "vertical_align": "Center",
+              "word_wrap": false,
+              "auto_height": false,
+              "padding": {
+                "left": 1.0,
+                "top": 0.5,
+                "right": 2.0,
+                "bottom": 0.5
+              },
+              "background": {
+                "r": 239,
+                "g": 243,
+                "b": 247,
+                "a": 255
+              },
+              "border": {
+                "left": true,
+                "top": true,
+                "right": true,
+                "bottom": true,
+                "width": 0.3
+              }
+            }
+          ]
+        },
+        {
+          "kind": {
+            "Data": {
+              "source": "products"
+            }
+          },
+          "height": 7.0,
+          "items": [
+            {
+              "type": "Text",
+              "name": "productName",
+              "x": 5.0,
+              "y": 0.0,
+              "width": 125.0,
+              "height": 7.0,
+              "text": "${products.name}",
+              "value_type": "Expression",
+              "query_source": {
+                "Named": "products"
+              },
+              "font_size": 10.0,
+              "font_family": "DejaVu Sans",
+              "bold": false,
+              "italic": false,
+              "text_color": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 255
+              },
+              "horizontal_align": "Left",
+              "vertical_align": "Center",
+              "word_wrap": false,
+              "auto_height": false,
+              "padding": {
+                "left": 2.0,
+                "top": 0.5,
+                "right": 1.0,
+                "bottom": 0.5
+              },
+              "background": null,
+              "border": {
+                "left": true,
+                "top": false,
+                "right": true,
+                "bottom": true,
+                "width": 0.3
+              }
+            },
+            {
+              "type": "Text",
+              "name": "productPrice",
+              "x": 130.0,
+              "y": 0.0,
+              "width": 60.0,
+              "height": 7.0,
+              "text": "${products.price}",
+              "value_type": "Double",
+              "query_source": {
+                "Named": "products"
+              },
+              "value_format": {
+                "decimal_places": 2,
+                "date_pattern": "",
+                "suffix": " EUR"
+              },
+              "font_size": 10.0,
+              "font_family": "DejaVu Sans",
+              "bold": false,
+              "italic": false,
+              "text_color": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 255
+              },
+              "horizontal_align": "Right",
+              "vertical_align": "Center",
+              "word_wrap": false,
+              "auto_height": false,
+              "padding": {
+                "left": 1.0,
+                "top": 0.5,
+                "right": 2.0,
+                "bottom": 0.5
+              },
+              "background": null,
+              "border": {
+                "left": true,
+                "top": false,
+                "right": true,
+                "bottom": true,
+                "width": 0.3
+              }
+            }
+          ]
+        },
+        {
+          "kind": {
+            "GroupFooter": {
+              "source": "products",
+              "field": "available"
+            }
+          },
+          "height": 8.0,
+          "items": [
+            {
+              "type": "Text",
+              "name": "availabilitySubtotal",
+              "x": 30.0,
+              "y": 0.5,
+              "width": 160.0,
+              "height": 7.0,
+              "text": "Availability subtotal: ${count(products)} products / ${sum(products.price)} EUR",
+              "value_type": "Function",
+              "font_size": 10.0,
+              "font_family": "DejaVu Sans",
+              "bold": true,
+              "italic": false,
+              "text_color": {
+                "r": 31,
+                "g": 55,
+                "b": 83,
+                "a": 255
+              },
+              "horizontal_align": "Right",
+              "vertical_align": "Center",
+              "word_wrap": false,
+              "auto_height": false,
+              "padding": {
+                "left": 1.0,
+                "top": 0.5,
+                "right": 2.0,
+                "bottom": 0.5
+              },
+              "background": {
+                "r": 239,
+                "g": 243,
+                "b": 247,
+                "a": 255
+              },
+              "border": {
+                "left": false,
+                "top": true,
+                "right": false,
+                "bottom": true,
+                "width": 0.3
+              }
+            }
+          ]
+        },
+        {
+          "kind": {
+            "GroupFooter": {
+              "source": "products",
+              "field": "category_id"
+            }
+          },
+          "height": 9.0,
+          "items": [
+            {
+              "type": "Text",
+              "name": "categorySubtotal",
+              "x": 0.0,
+              "y": 1.0,
+              "width": 190.0,
+              "height": 7.0,
+              "text": "CATEGORY TOTAL: ${count(products)} products / ${sum(products.price)} EUR",
+              "value_type": "Function",
+              "font_size": 11.0,
+              "font_family": "DejaVu Sans",
+              "bold": true,
+              "italic": false,
+              "text_color": {
+                "r": 255,
+                "g": 255,
+                "b": 255,
+                "a": 255
+              },
+              "horizontal_align": "Right",
+              "vertical_align": "Center",
+              "word_wrap": false,
+              "auto_height": false,
+              "padding": {
+                "left": 2.0,
+                "top": 0.5,
+                "right": 3.0,
+                "bottom": 0.5
+              },
+              "background": {
+                "r": 67,
+                "g": 104,
+                "b": 145,
+                "a": 255
+              },
+              "border": null
+            }
+          ]
+        },
+        {
+          "kind": "ReportFooter",
+          "height": 11.0,
+          "items": [
+            {
+              "type": "Text",
+              "name": "grandTotal",
+              "x": 0.0,
+              "y": 2.0,
+              "width": 190.0,
+              "height": 8.0,
+              "text": "GRAND TOTAL: ${count(products)} products / ${sum(products.price)} EUR",
+              "value_type": "Function",
+              "font_size": 12.0,
+              "font_family": "DejaVu Sans",
+              "bold": true,
+              "italic": false,
+              "text_color": {
+                "r": 255,
+                "g": 255,
+                "b": 255,
+                "a": 255
+              },
+              "horizontal_align": "Right",
+              "vertical_align": "Center",
+              "word_wrap": false,
+              "auto_height": false,
+              "padding": {
+                "left": 2.0,
+                "top": 1.0,
+                "right": 3.0,
+                "bottom": 1.0
+              },
+              "background": {
+                "r": 31,
+                "g": 55,
+                "b": 83,
+                "a": 255
+              },
+              "border": null
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

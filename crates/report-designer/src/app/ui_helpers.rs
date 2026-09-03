@@ -6,6 +6,8 @@ pub(super) fn band_name(kind: &BandKind) -> &'static str {
         BandKind::PageHeader => "PageHeader",
         BandKind::Data { .. } => "DataBand",
         BandKind::DataHeader { .. } => "DataHeader",
+        BandKind::GroupHeader { .. } => "GroupHeader",
+        BandKind::GroupFooter { .. } => "GroupFooter",
         BandKind::PageFooter => "PageFooter",
         BandKind::ReportFooter => "ReportFooter",
     }
@@ -28,6 +30,14 @@ pub(super) fn band_colors(kind: &BandKind) -> (Color, Color) {
         BandKind::DataHeader { .. } => (
             Color::from_rgba8(246, 232, 205, 0.30),
             Color::from_rgb8(160, 100, 25),
+        ),
+        BandKind::GroupHeader { .. } => (
+            Color::from_rgba8(225, 242, 252, 0.30),
+            Color::from_rgb8(45, 125, 175),
+        ),
+        BandKind::GroupFooter { .. } => (
+            Color::from_rgba8(236, 242, 252, 0.30),
+            Color::from_rgb8(75, 105, 165),
         ),
         BandKind::PageFooter => (
             Color::from_rgba8(236, 231, 248, 0.30),

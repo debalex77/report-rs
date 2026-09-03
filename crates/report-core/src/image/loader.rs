@@ -26,6 +26,9 @@ pub enum ImageLoadError {
         #[source]
         source: image::ImageError,
     },
+
+    #[error("failed to decode SVG image '{}': {message}", path.display())]
+    Svg { path: PathBuf, message: String },
 }
 
 /// Reads a PNG or JPEG file and decodes it to RGBA8 pixels.
@@ -40,10 +43,54 @@ pub fn load_image(path: impl AsRef<Path>) -> Result<LoadedImage, ImageLoadError>
         source,
     })?;
 
-    let decoded = image::load_from_memory(&bytes).map_err(|source| ImageLoadError::Decode {
-        path: path.to_path_buf(),
-        source,
-    })?;
+    load_image_bytes(&bytes, path)
+}
+
+/// Decodes PNG/JPEG bytes obtained from a database BLOB.
+pub fn load_image_bytes(
+    bytes: &[u8],
+    source_name: impl AsRef<Path>,
+) -> Result<LoadedImage, ImageLoadError> {
+    let source_name = source_name.as_ref();
+    let decoded = match image::load_from_memory(bytes) {
+        Ok(decoded) => decoded,
+        Err(_source)
+            if bytes.starts_with(b"<svg") || bytes.windows(4).any(|part| part == b"<svg") =>
+        {
+            let options = resvg::usvg::Options::default();
+            let tree = resvg::usvg::Tree::from_data(bytes, &options).map_err(|error| {
+                ImageLoadError::Svg {
+                    path: source_name.to_path_buf(),
+                    message: error.to_string(),
+                }
+            })?;
+            let size = tree.size().to_int_size();
+            let mut pixmap = resvg::tiny_skia::Pixmap::new(size.width(), size.height())
+                .ok_or_else(|| ImageLoadError::Svg {
+                    path: source_name.to_path_buf(),
+                    message: "invalid SVG dimensions".to_string(),
+                })?;
+            resvg::render(
+                &tree,
+                resvg::tiny_skia::Transform::default(),
+                &mut pixmap.as_mut(),
+            );
+            let png = pixmap.encode_png().map_err(|error| ImageLoadError::Svg {
+                path: source_name.to_path_buf(),
+                message: error.to_string(),
+            })?;
+            image::load_from_memory(&png).map_err(|source| ImageLoadError::Decode {
+                path: source_name.to_path_buf(),
+                source,
+            })?
+        }
+        Err(source) => {
+            return Err(ImageLoadError::Decode {
+                path: source_name.to_path_buf(),
+                source,
+            });
+        }
+    };
     let rgba = decoded.to_rgba8();
 
     Ok(LoadedImage {
@@ -81,6 +128,32 @@ mod tests {
         assert_eq!(loaded.width, 2);
         assert_eq!(loaded.height, 1);
         assert_eq!(loaded.rgba, vec![10, 20, 30, 40, 10, 20, 30, 40]);
+    }
+
+    #[test]
+    fn load_png_blob_to_rgba() {
+        let source = RgbaImage::from_pixel(2, 1, Rgba([10, 20, 30, 40]));
+        let mut bytes = Cursor::new(Vec::new());
+        DynamicImage::ImageRgba8(source)
+            .write_to(&mut bytes, ImageFormat::Png)
+            .unwrap();
+
+        let loaded = load_image_bytes(&bytes.into_inner(), "database-image").unwrap();
+
+        assert_eq!(loaded.width, 2);
+        assert_eq!(loaded.height, 1);
+        assert_eq!(loaded.rgba.len(), 8);
+    }
+
+    #[test]
+    fn load_svg_blob_to_rgba() {
+        let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" width="2" height="3"><rect width="2" height="3" fill="red"/></svg>"#;
+
+        let loaded = load_image_bytes(svg, "database-svg").unwrap();
+
+        assert_eq!(loaded.width, 2);
+        assert_eq!(loaded.height, 3);
+        assert_eq!(loaded.rgba.len(), 2 * 3 * 4);
     }
 
     #[test]

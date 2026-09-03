@@ -278,6 +278,7 @@ fn infer_query_value_type(field: &str, value: Option<&Value>) -> ValueType {
             }
         }
         Some(Value::Bool(_)) => ValueType::Boolean,
+        Some(Value::Blob(_)) => ValueType::Expression,
         Some(Value::String(value)) if looks_like_iso_datetime(value) => ValueType::DateTime,
         Some(Value::String(value)) if looks_like_iso_date(value) => ValueType::Date,
         Some(Value::String(_)) => ValueType::Text,
@@ -392,6 +393,39 @@ pub(super) fn load_query_rules_preview(
 }
 
 impl DesignerApp {
+    pub(super) fn load_function_query_fields(&mut self) {
+        let positions = self
+            .report
+            .data_sources
+            .iter()
+            .enumerate()
+            .flat_map(|(source_index, source)| {
+                source
+                    .queries
+                    .iter()
+                    .enumerate()
+                    .map(move |(query_index, query)| {
+                        (source_index, query_index, query.name.clone())
+                    })
+            })
+            .collect::<Vec<_>>();
+        for (source_index, query_index, query_name) in positions {
+            if self.query_fields.contains_key(&query_name) {
+                continue;
+            }
+            if let Ok((query_name, fields, types)) =
+                self.load_query_field_names(source_index, query_index)
+            {
+                self.query_field_types.extend(
+                    types
+                        .into_iter()
+                        .map(|(field, value_type)| ((query_name.clone(), field), value_type)),
+                );
+                self.query_fields.insert(query_name, fields);
+            }
+        }
+    }
+
     pub(super) fn load_query_field_names(
         &self,
         source_index: usize,
@@ -1113,6 +1147,80 @@ impl DesignerApp {
                     .spacing(7)
                     .on_toggle(Message::IncludeRowNumberChanged),
             )
+            .push({
+                let mut group_rows = iced::widget::column![
+                    row![
+                        text("Grouping levels").size(11),
+                        Space::new().width(Fill),
+                        button(text("+ Group").size(11))
+                            .style(common::style_button(6.0))
+                            .on_press_maybe(
+                                (drop.groups.len() < drop.columns.len())
+                                    .then_some(Message::AddGeneratedGroup),
+                            ),
+                    ]
+                    .align_y(iced::Alignment::Center)
+                ]
+                .spacing(5);
+                for (index, group) in drop.groups.iter().enumerate() {
+                    group_rows = group_rows.push(
+                        row![
+                            text(format!("{}.", index + 1)).size(11).width(22),
+                            pick_list(
+                                drop.columns
+                                    .iter()
+                                    .map(|column| column.field.clone())
+                                    .collect::<Vec<_>>(),
+                                Some(group.field.clone()),
+                                move |field| Message::GeneratedGroupFieldChanged(index, field),
+                            )
+                            .width(Fill)
+                            .text_size(11)
+                            .padding(5),
+                            toggler(group.include_header)
+                                .label("Header")
+                                .text_size(10)
+                                .size(14)
+                                .on_toggle(move |value| {
+                                    Message::GeneratedGroupHeaderChanged(index, value)
+                                }),
+                            toggler(group.include_footer)
+                                .label("Footer + totals")
+                                .text_size(10)
+                                .size(14)
+                                .on_toggle(move |value| {
+                                    Message::GeneratedGroupFooterChanged(index, value)
+                                }),
+                            button(container(text("↑").size(11)).center(Fill))
+                                .width(26)
+                                .height(24)
+                                .padding(0)
+                                .style(common::style_button(4.0))
+                                .on_press_maybe(
+                                    (index > 0).then_some(Message::MoveGeneratedGroupUp(index)),
+                                ),
+                            button(container(text("↓").size(11)).center(Fill))
+                                .width(26)
+                                .height(24)
+                                .padding(0)
+                                .style(common::style_button(4.0))
+                                .on_press_maybe(
+                                    (index + 1 < drop.groups.len())
+                                        .then_some(Message::MoveGeneratedGroupDown(index)),
+                                ),
+                            button(container(text("×").size(11)).center(Fill))
+                                .width(26)
+                                .height(24)
+                                .padding(0)
+                                .style(common::style_button(5.0))
+                                .on_press(Message::RemoveGeneratedGroup(index)),
+                        ]
+                        .spacing(5)
+                        .align_y(iced::Alignment::Center),
+                    );
+                }
+                group_rows
+            })
             .push(
                 row![
                     text_input("Template name", &drop.template_name)

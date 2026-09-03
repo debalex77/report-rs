@@ -1,0 +1,15 @@
+{
+  "convert_case-0.4.0": {"declared":"MIT","selected":"MIT","manifest_sha256":"bbd8c27bde074b1c78539307cc2f1770efdaf890253cce4b9557cfdc32d4e605"},
+  "fxhash-0.2.1": {"declared":"Apache-2.0/MIT","selected":"Apache-2.0","manifest_sha256":"83bb4c3e7fbfb7380c175923ba7dfe150e4e09bd4ebfb45e65e5f8a494d36ab9"},
+  "gpu-alloc-0.6.2": {"declared":"MIT OR Apache-2.0","selected":"Apache-2.0","manifest_sha256":"94ce474d1051e0dcd688277d28f1e6803e667645b8998c016d6e30055d1ea2f5"},
+  "gpu-alloc-types-0.3.1": {"declared":"MIT OR Apache-2.0","selected":"Apache-2.0","manifest_sha256":"34a3c36524ab156db79ebcf76a878995365eca34c7975c3316ab528a1eeb60b7"},
+  "gpu-descriptor-0.3.2": {"declared":"MIT OR Apache-2.0","selected":"Apache-2.0","manifest_sha256":"8c72608cd345f059df314860960da46978779233cedc3553db34c98a4e9fac88"},
+  "gpu-descriptor-types-0.2.0": {"declared":"MIT OR Apache-2.0","selected":"Apache-2.0","manifest_sha256":"54164c8c1352852cce6f2330030365868815deb9bd717b8d493071790cd72d7b"},
+  "hexf-parse-0.2.1": {"declared":"CC0-1.0","selected":"CC0-1.0","manifest_sha256":"dd7274968556f3f3309df5615d94437ec4e4823777cc440f91177b2170cbe2a7"},
+  "kuchiki-0.8.1": {"declared":"MIT","selected":"MIT","manifest_sha256":"9309c4a8f8a064ba547dfe51255d5f9dd1cdf714182e303d5c885f51bb7e28c9"},
+  "mac-0.1.1": {"declared":"MIT/Apache-2.0","selected":"Apache-2.0","manifest_sha256":"6d465c5e5a4b3e197049e9fb7393b2f996c1c654e6ded700afce046fac2f7969"},
+  "pathfinder_geometry-0.5.1": {"declared":"MIT/Apache-2.0","selected":"Apache-2.0","manifest_sha256":"141871f41ab4ac7af854e54f1f637fb168ffbc97fdb57c60608f11b8eb95f1d7"},
+  "selectors-0.22.0": {"declared":"MPL-2.0","selected":"MPL-2.0","manifest_sha256":"844d59a1bccb0b27e1e969608f65fda24f7a6d8e2378c454c3be43fd62b0d426"},
+  "servo_arc-0.1.1": {"declared":"MIT/Apache-2.0","selected":"Apache-2.0","manifest_sha256":"c853e43b2ccf4ca2cf6958f1a47d3b5c3a52f99c2b99fd22e023f823d8a6ca3e"},
+  "thin-slice-0.1.1": {"declared":"MPL-2.0","selected":"MPL-2.0","manifest_sha256":"bc648e7794ea9bf0b7b520a0ba079ef65226158dc6ece1e617beadc52456e1b7"}
+}
