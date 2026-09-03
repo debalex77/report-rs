@@ -14,6 +14,9 @@
   <a href="https://github.com/debalex77/report-rs/commits/main">
     <img src="https://img.shields.io/github/last-commit/debalex77/report-rs" alt="Last commit">
   </a>
+  <a href="https://github.com/debalex77/report-rs/actions/workflows/ci.yml">
+    <img src="https://github.com/debalex77/report-rs/actions/workflows/ci.yml/badge.svg" alt="CI">
+  </a>
 </p>
 
 # report-rs
