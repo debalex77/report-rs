@@ -7,10 +7,16 @@
 <p align="center">A visual, band-based report designer and rendering engine written in Rust.</p>
 
 <p align="center">
-  <a href="https://github.com/debalex77/report-rs/actions/workflows/ci.yml"><img src="https://github.com/debalex77/report-rs/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="MIT License"></a>
+  <a href="https://github.com/debalex77/report-rs/actions/workflows/ci.yml">
+    <img src="https://github.com/debalex77/report-rs/actions/workflows/ci.yml/badge.svg" alt="CI">
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/github/license/debalex77/report-rs" alt="License">
+  </a>
   <img src="https://img.shields.io/badge/Rust-2024-orange?logo=rust" alt="Rust 2024">
-  <img src="https://img.shields.io/badge/release-v0.1.0--alpha.1-blue" alt="v0.1.0-alpha.1">
+  <img src="https://img.shields.io/github/v/release/debalex77/report-rs?include_prereleases" alt="Release">
+  <img src="https://img.shields.io/github/downloads/debalex77/report-rs/total" alt="Downloads">
+  <img src="https://img.shields.io/github/stars/debalex77/report-rs" alt="Stars">
 </p>
 
 ![report-rs Designer](docs/images/report-rs-demo.gif)
